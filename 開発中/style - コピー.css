@@ -161,23 +161,10 @@ body {
         font-size: 10px;
     }
     
-#tel-fax-tbl th[rowspan="3"] {
-    /* 縦書きを解除（これが重要！） */
-    writing-mode: horizontal-tb !important;
-    -webkit-writing-mode: horizontal-tb !important;
-    
-    /* 幅を1文字分強に固定して、絶対に右にはみ出させない */
-    width: 20px !important;
-    min-width: 20px !important;
-    max-width: 20px !important;
-    
-    line-height: 1.1;    /* 行間を詰める */
-    letter-spacing: 0;   /* 文字間をリセット */
-    padding: 2px !important;
-    text-align: center;
-    vertical-align: middle;
-    word-break: break-all; /* 万が一の時も強制改行 */
-}
+    #tel-fax-tbl th[rowspan="3"] {
+        writing-mode: vertical-rl;
+        text-orientation: upright;
+    }
     
     #delivery-info-tbl {
         width: 100%;
@@ -466,9 +453,23 @@ body {
         border: 1px solid #888;
         width: 80%;
         max-width: 500px;
-    
+        position: relative;
     }
 
+    .close-btn {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close-btn:hover,
+    .close-btn:focus {
+        color: black;
+        text-decoration: none;
+        cursor: pointer;
+    }
 
     #productList, #owned-product-list {
         margin-top: 0;
