@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wタップ編集版 Wスキャナー</title>
+    <title>操作改善版 Wスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -23,7 +23,7 @@
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #8e8e93; }
         .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
         .btn-row { display: flex; gap: 8px; }
-        .btn-main { border: none; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; }
+        .btn-main { border: none; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
         .btn-next { background: #8e8e93; color: white; }
         .btn-scan-prod { background: #007aff; color: white; }
         .btn-scan-discount { background: #34c759; color: white; }
@@ -33,6 +33,7 @@
             background: white; border-radius: 12px; margin-bottom: 12px; 
             border: 2px solid transparent; padding: 15px; position: relative; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: all 0.2s;
+            user-select: none;
         }
         .product-group.selected { border-color: #007aff; background-color: #f0f7ff; }
         .selected-badge { display: none; position: absolute; top: -10px; left: 10px; background: #007aff; color: white; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
@@ -42,13 +43,18 @@
         .input-unit { display: flex; flex-direction: column; gap: 4px; padding-right: 35px; margin-bottom: 8px; }
         .input-unit label { font-size: 11px; color: #8e8e93; font-weight: bold; }
         
-        /* 編集可能な入力欄のスタイル */
+        /* 初期状態ではクリックをスルーさせる */
         .editable-input { 
             width: 100%; border: 1px solid #d1d1d6; padding: 10px; 
             border-radius: 8px; font-size: 16px; box-sizing: border-box; 
-            background: #fff; transition: border-color 0.2s;
+            background: #fff; pointer-events: none; 
         }
-        .editable-input:focus { border-color: #007aff; outline: none; background: #fff !important; }
+        /* 編集モード時のみクリックを許可 */
+        .editable-input.editing { 
+            pointer-events: auto !important;
+            border-color: #007aff;
+            background: #ffffff;
+        }
         
         .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 12px; border-top: 1px solid #d1d1d6; z-index: 500; }
         .btn-download { background: #ff9500; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 16px; }
@@ -57,11 +63,11 @@
 <body>
 
 <div class="fixed-top">
-    <div id="status" class="status-msg">「次へ」で新規、リスト選択で修正/割引</div>
+    <div id="status" class="status-msg">1タップで選択、Wタップで編集</div>
     <div id="interactive">
         <div class="scan-guide" id="guide"></div>
         <div id="scan-popup">
-            <div>
+            <div id="pop-info">
                 <div style="font-size: 10px; color: #666;" id="mode-text">13桁検知</div>
                 <div style="font-size: 18px; font-weight: bold;" id="scanned-jan">---</div>
             </div>
@@ -110,23 +116,11 @@
         document.getElementById('scanned-jan').innerText = tempJan;
         document.getElementById('mode-text').innerText = (scanTarget === 'PRODUCT') ? "商品JAN(修正)" : "割引JAN";
         document.getElementById('scan-popup').style.display = 'flex';
-        if (window.navigator.vibrate) window.navigator.vibrate([50, 30, 50]);
     });
 
     function prepareNext() { deselectAll(); startProductScan(); updateStatus("新規商品スキャン...", "#007aff"); }
-
-    function startProductScan() {
-        scanTarget = 'PRODUCT'; isScanning = true; lastCodes = [];
-        document.getElementById('scan-popup').style.display = 'none';
-        document.getElementById('guide').style.borderColor = "#007aff";
-    }
-
-    function startDiscountScan() {
-        if (!selectedGroupId) return;
-        scanTarget = 'DISCOUNT'; isScanning = true; lastCodes = [];
-        document.getElementById('scan-popup').style.display = 'none';
-        document.getElementById('guide').style.borderColor = "#34c759";
-    }
+    function startProductScan() { scanTarget = 'PRODUCT'; isScanning = true; lastCodes = []; document.getElementById('scan-popup').style.display = 'none'; document.getElementById('guide').style.borderColor = "#007aff"; }
+    function startDiscountScan() { if (!selectedGroupId) return; scanTarget = 'DISCOUNT'; isScanning = true; lastCodes = []; document.getElementById('scan-popup').style.display = 'none'; document.getElementById('guide').style.borderColor = "#34c759"; }
 
     async function confirmScan() {
         document.getElementById('scan-popup').style.display = 'none';
@@ -151,6 +145,8 @@
     function deselectAll() {
         document.querySelectorAll('.product-group').forEach(el => el.classList.remove('selected'));
         selectedGroupId = null; document.getElementById('scan-discount-btn').disabled = true;
+        // すべての編集モードを解除
+        document.querySelectorAll('.editable-input').forEach(input => disableEdit(input));
     }
 
     function createNewProductGroup(jan) {
@@ -161,8 +157,12 @@
         groupDiv.id = groupId;
         groupDiv.dataset.prodJan = jan;
         
-        // 1回タップでカード選択
-        groupDiv.onclick = () => selectGroup(groupId);
+        // カード全体のタップ処理
+        groupDiv.onclick = (e) => {
+            // 入力中ならセレクト処理をスキップ
+            if (e.target.classList.contains('editing')) return;
+            selectGroup(groupId);
+        };
         
         groupDiv.innerHTML = `
             <div class="selected-badge">選択中</div>
@@ -170,12 +170,12 @@
             <div class="input-unit"><label>商品名（Wタップで編集）</label>
                 <input type="text" class="editable-input" id="input-${groupId}" 
                 value="商品名取得中..." readonly 
-                ondblclick="enableEdit(this)" onblur="disableEdit(this)" onclick="event.stopPropagation()">
+                ondblclick="enableEdit(this)" onblur="disableEdit(this)">
             </div>
             <div class="input-unit"><label>割引JAN（Wタップで編集）</label>
                 <input type="text" class="editable-input" id="discount-${groupId}" 
                 placeholder="未設定" readonly 
-                ondblclick="enableEdit(this)" onblur="disableEdit(this)" onclick="event.stopPropagation()">
+                ondblclick="enableEdit(this)" onblur="disableEdit(this)">
             </div>
             <div class="jan-display" style="font-size:10px; color:#999; text-align:right;">JAN: ${jan}</div>
         `;
@@ -183,14 +183,28 @@
         return groupId;
     }
 
-    // 入力編集の制御
+    // 編集モードを有効化
     function enableEdit(el) {
+        // カードが選択されていない場合は先に選択させる
+        const parent = el.closest('.product-group');
+        if (!parent.classList.contains('selected')) {
+            selectGroup(parent.id);
+        }
+        
         el.readOnly = false;
-        el.focus();
-        el.style.backgroundColor = "#ffffff";
+        el.classList.add('editing');
+        
+        // 強制的にキーボードを表示させるためのフォーカス
+        setTimeout(() => {
+            el.focus();
+            el.setSelectionRange(el.value.length, el.value.length); // カーソルを末尾に
+        }, 50);
     }
+
+    // 編集モードを無効化
     function disableEdit(el) {
         el.readOnly = true;
+        el.classList.remove('editing');
     }
 
     async function fetchProductName(jan) {
