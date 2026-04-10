@@ -21,19 +21,14 @@
         .btn-capture { background: #5856d6; color: white; }
         .btn-next { background: #007aff; color: white; }
         .btn-main:disabled { background: #d1d1d6; color: #8e8e93; }
-
         .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; -webkit-overflow-scrolling: touch; }
         .product-group { background: white; border-radius: 12px; margin-bottom: 10px; border: 1px solid #e5e5ea; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-        
-        /* 入力ラベルとボックスのセット */
         .input-unit { display: flex; flex-direction: column; gap: 3px; }
         .input-unit label { font-size: 11px; color: #555; font-weight: bold; }
         .model-input { width: 100%; border: 2px solid #007aff; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
         .discount-input { width: 100%; border: 2px solid #34c759; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
-        
         .captured-img { width: 100%; border-radius: 8px; margin-top: 5px; border: 1px solid #eee; display: none; }
         .jan-label { font-size: 11px; color: #888; }
-
         .footer-save { position: fixed; bottom: 0; width: 100%; background: rgba(255,255,255,0.95); padding: 15px; border-top: 1px solid #d1d1d6; box-sizing: border-box; }
         .btn-download { background: #34c759; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; }
         canvas { display: none; }
@@ -63,9 +58,8 @@
 <canvas id="capture-canvas"></canvas>
 
 <script>
-    // ==========================================
-    const YAHOO_APP_ID = 'ここに入れてください'; 
-    // ==========================================
+    // 提供いただいた Client ID を設定済み
+    const YAHOO_APP_ID = 'dmVyPTIwMjUwNyZpZD1HYWY1RGV1Q1NWJmhhc2g9TlRJM1ltVXdZVGhtWW1WaFlXTTRaUQ'; 
 
     let isScanning = true;
     let tempJan = null;
@@ -99,7 +93,6 @@
     }
 
     async function fetchProductName(jan) {
-        if (YAHOO_APP_ID.includes('ここに')) return "ID未設定";
         try {
             const proxy = "https://corsproxy.io/?";
             const targetUrl = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${YAHOO_APP_ID}&jan_code=${jan}&results=1`;
