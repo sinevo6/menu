@@ -8,54 +8,72 @@
     <style>
         body { font-family: sans-serif; margin: 0; padding: 15px; background: #f8f9fa; padding-bottom: 80px; }
         #interactive { width: 100%; height: 180px; border: 3px solid #333; border-radius: 8px; background: #000; }
+        
         .controls { margin: 15px 0; display: flex; gap: 10px; }
         .btn { border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .btn-next { background: #007bff; color: white; }
         .btn-download { background: #28a745; color: white; }
-        .btn-next:disabled { background: #ccc; }
+        .btn-next:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .status-msg { text-align: center; font-size: 14px; color: #d9534f; margin-bottom: 8px; font-weight: bold; height: 20px; }
         
         .list-container { margin-top: 15px; }
         .product-group { background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .product-header { background: #e9ecef; padding: 10px; font-weight: bold; border-bottom: 1px solid #ddd; }
-        .discount-item { padding: 8px 15px; border-bottom: 1px solid #eee; font-size: 13px; color: #555; }
-        .jan-label { font-size: 11px; color: #888; display: block; }
-        .model-name { color: #007bff; display: block; margin-bottom: 4px; }
-        .name-input { width: 100%; border: 1px solid #ccc; padding: 5px; border-radius: 4px; box-sizing: border-box; margin-top: 4px; }
-        .status-msg { text-align: center; font-size: 14px; color: #d9534f; margin-bottom: 5px; font-weight: bold; }
+        .product-header { background: #e9ecef; padding: 10px; border-bottom: 1px solid #ddd; }
+        .model-input { width: 100%; border: 1px solid #007bff; padding: 8px; border-radius: 4px; box-sizing: border-box; font-weight: bold; color: #007bff; font-size: 14px; }
+        .jan-label { font-size: 11px; color: #888; display: block; margin-top: 4px; }
+        
+        .discount-list { background: #fff; }
+        .discount-item { padding: 10px 15px; border-bottom: 1px solid #eee; }
+        .discount-name-input { width: 100%; border: 1px solid #ccc; padding: 6px; border-radius: 4px; box-sizing: border-box; font-size: 13px; }
     </style>
 </head>
 <body>
 
-    <div id="status" class="status-msg">スキャンしてください</div>
+    <div id="status" class="status-msg">スキャン待機中...</div>
     <div id="interactive"></div>
     
     <div class="controls">
-        <button id="next-btn" class="btn btn-next" onclick="prepareNextScan()" disabled>次へ (商品を確定)</button>
+        <button id="next-btn" class="btn btn-next" onclick="prepareNextScan()" disabled>次へ (確定して次をスキャン)</button>
         <button class="btn btn-download" onclick="downloadCSV()">CSV保存</button>
     </div>
 
     <div id="result-area" class="list-container"></div>
 
     <script>
-        let isWaitingForNext = false; // 「次へ」待ち状態
+        let isWaitingForNext = false; 
         let lastProductGroupId = null;
 
+        // カメラ初期化
         Quagga.init({
-            inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment" } },
+            inputStream: { 
+                name: "Live", 
+                type: "LiveStream", 
+                target: document.querySelector('#interactive'), 
+                constraints: { facingMode: "environment" } 
+            },
             decoder: { readers: ["ean_reader"] }
-        }, (err) => { if (!err) Quagga.start(); });
+        }, (err) => { 
+            if (err) { alert("カメラの起動に失敗しました"); return; }
+            Quagga.start(); 
+        });
 
+        // バーコード検知時の処理
         Quagga.onDetected((result) => {
-            if (isWaitingForNext) return; // 「次へ」を押すまで反応しない
+            if (isWaitingForNext) return; 
 
             const code = result.codeResult.code;
             isWaitingForNext = true;
+            
+            // UI更新
             document.getElementById('next-btn').disabled = false;
-            document.getElementById('status').innerText = "スキャン完了！「次へ」を押してください";
-            document.getElementById('status').style.color = "#28a745";
+            const status = document.getElementById('status');
+            status.innerText = "読込完了！内容を確認して「次へ」";
+            status.style.color = "#28a745";
 
-            // 45/49始まり、または最初の1件目は商品として扱う
-            if (code.startsWith('45') || code.startsWith('49') || !lastProductGroupId) {
+            // 最初の1件目、または特定のJAN体系(45,49等)を「商品」として扱う
+            // それ以外は直前の商品に紐付く「割引」として扱う
+            if (!lastProductGroupId || code.startsWith('45') || code.startsWith('49')) {
                 createNewProductGroup(code);
             } else {
                 addDiscountToLastProduct(code);
@@ -64,14 +82,16 @@
             if (window.navigator.vibrate) window.navigator.vibrate(100);
         });
 
-        // 「次へ」ボタンの処理
+        // 「次へ」ボタン：次のスキャンを許可する
         function prepareNextScan() {
             isWaitingForNext = false;
             document.getElementById('next-btn').disabled = true;
-            document.getElementById('status').innerText = "スキャンしてください";
-            document.getElementById('status').style.color = "#d9534f";
+            const status = document.getElementById('status');
+            status.innerText = "スキャン待機中...";
+            status.style.color = "#d9534f";
         }
 
+        // 新しい商品グループを作成
         function createNewProductGroup(jan) {
             const resultArea = document.getElementById('result-area');
             const groupId = 'prod-' + Date.now();
@@ -84,15 +104,15 @@
             
             groupDiv.innerHTML = `
                 <div class="product-header">
-                    <span class="model-name" id="name-${groupId}">検索中...</span>
+                    <input type="text" class="model-input" value="商品型番を入力してください" onfocus="if(this.value=='商品型番を入力してください')this.value=''">
                     <span class="jan-label">商品 JAN: ${jan}</span>
                 </div>
                 <div class="discount-list" id="discounts-${groupId}"></div>
             `;
             resultArea.insertBefore(groupDiv, resultArea.firstChild);
-            fetchModelName(jan, `name-${groupId}`, groupDiv);
         }
 
+        // 割引JANを追加
         function addDiscountToLastProduct(jan) {
             if (!lastProductGroupId) return;
             const discountList = document.getElementById(`discounts-${lastProductGroupId}`);
@@ -101,27 +121,21 @@
             item.dataset.discountJan = jan;
             item.innerHTML = `
                 <span class="jan-label">割引JAN: ${jan}</span>
-                <input type="text" class="name-input discount-name" placeholder="施策名を入力...">
+                <input type="text" class="discount-name-input" placeholder="割引名称・施策名を入力...">
             `;
             discountList.appendChild(item);
         }
 
-        async function fetchModelName(jan, elementId, groupDiv) {
-            // 擬似的な型番取得
-            setTimeout(() => {
-                const modelName = "商品型番: " + jan.substring(0, 4) + "-" + jan.substring(9); 
-                document.getElementById(elementId).innerText = modelName;
-                groupDiv.dataset.prodModel = modelName;
-            }, 500);
-        }
-
+        // CSV書き出し
         function downloadCSV() {
-            let csvContent = "\uFEFF"; // BOM
+            let csvContent = "\uFEFF"; // BOM (Excel文字化け対策)
             csvContent += "商品型番,商品JAN,割引JAN,割引名称\n";
 
             const groups = document.querySelectorAll('.product-group');
+            if (groups.length === 0) { alert("データがありません"); return; }
+
             groups.forEach(group => {
-                const prodModel = group.dataset.prodModel || "不明";
+                const prodModel = group.querySelector('.model-input').value;
                 const prodJan = group.dataset.prodJan;
                 const discounts = group.querySelectorAll('.discount-item');
 
@@ -130,7 +144,7 @@
                 } else {
                     discounts.forEach(d => {
                         const dJan = d.dataset.discountJan;
-                        const dName = d.querySelector('.discount-name').value;
+                        const dName = d.querySelector('.discount-name-input').value;
                         csvContent += `"${prodModel}","${prodJan}","${dJan}","${dName}"\n`;
                     });
                 }
@@ -139,7 +153,7 @@
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `scan_list_${new Date().getTime()}.csv`;
+            link.download = `scan_report_${new Date().getTime()}.csv`;
             link.click();
         }
     </script>
