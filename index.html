@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>操作完全ガード版 Wスキャナー</title>
+    <title>スマホWタップ対応版 Wスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -17,7 +17,7 @@
             background: rgba(255, 255, 255, 0.98); border-radius: 12px; 
             padding: 12px; display: none; flex-direction: row; 
             align-items: center; justify-content: space-between; 
-            z-index: 1000; box-shadow: 0 8px 20px rgba(0,0,0,0.4); border: 2px solid #007aff;
+            z-index: 2000; box-shadow: 0 8px 20px rgba(0,0,0,0.4); border: 2px solid #007aff;
         }
         
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #8e8e93; }
@@ -38,7 +38,7 @@
         .selected-badge { display: none; position: absolute; top: -10px; left: 10px; background: #007aff; color: white; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
         .product-group.selected .selected-badge { display: block; }
 
-        .del-btn { position: absolute; top: 10px; right: 10px; background: #ff3b30; color: white; border: none; width: 28px; height: 28px; border-radius: 14px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 200; }
+        .del-btn { position: absolute; top: 10px; right: 10px; background: #ff3b30; color: white; border: none; width: 28px; height: 28px; border-radius: 14px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 300; }
         
         .input-unit { display: flex; flex-direction: column; gap: 4px; padding-right: 35px; margin-bottom: 8px; position: relative; }
         .input-unit label { font-size: 11px; color: #8e8e93; font-weight: bold; }
@@ -46,7 +46,7 @@
         /* 透明なガードレイヤー */
         .input-overlay {
             position: absolute; bottom: 0; left: 0; right: 0; top: 15px;
-            z-index: 100; background: transparent;
+            z-index: 100; background: transparent; -webkit-tap-highlight-color: transparent;
         }
         
         .editable-input { 
@@ -54,7 +54,6 @@
             border-radius: 8px; font-size: 16px; box-sizing: border-box; 
             background: #fff;
         }
-        .editable-input:focus { border-color: #007aff; outline: none; z-index: 150; }
         
         .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 12px; border-top: 1px solid #d1d1d6; z-index: 500; }
         .btn-download { background: #ff9500; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 16px; }
@@ -63,12 +62,12 @@
 <body>
 
 <div class="fixed-top">
-    <div id="status" class="status-msg">1タップでカード選択 / Wタップで直接編集</div>
+    <div id="status" class="status-msg">1タップで選択 / 素早く2回タップで直接編集</div>
     <div id="interactive">
         <div class="scan-guide" id="guide"></div>
         <div id="scan-popup">
             <div id="pop-info">
-                <div style="font-size: 10px; color: #666;" id="mode-text">13桁検知</div>
+                <div style="font-size: 10px; color: #666;" id="mode-text">---</div>
                 <div style="font-size: 18px; font-weight: bold;" id="scanned-jan">---</div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -98,6 +97,7 @@
     let lastCodes = [];
     const REQUIRED_CONFIRMATIONS = 3;
 
+    // Quagga設定
     Quagga.init({
         inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment", focusMode: "continuous" } },
         decoder: { readers: ["ean_reader"] },
@@ -147,6 +147,7 @@
         selectedGroupId = null; document.getElementById('scan-discount-btn').disabled = true;
     }
 
+    let lastTapTime = 0;
     function createNewProductGroup(jan) {
         const resultArea = document.getElementById('result-area');
         const groupId = 'prod-' + Date.now();
@@ -155,45 +156,59 @@
         groupDiv.id = groupId;
         groupDiv.dataset.prodJan = jan;
         
-        // カード全体のタップ処理
-        groupDiv.onclick = () => selectGroup(groupId);
+        // カード全体のタップ
+        groupDiv.addEventListener('touchend', (e) => {
+            // もし入力中なら無視
+            if(document.activeElement.classList.contains('editable-input')) return;
+            selectGroup(groupId);
+        });
         
         groupDiv.innerHTML = `
             <div class="selected-badge">選択中</div>
             <button class="del-btn" onclick="event.stopPropagation(); deleteRow('${groupId}')">×</button>
-            
             <div class="input-unit">
                 <label>商品名</label>
-                <div class="input-overlay" ondblclick="handleDblClick(this)" onclick="event.stopPropagation()"></div>
-                <input type="text" class="editable-input" id="input-${groupId}" 
-                value="商品名取得中..." onblur="disableEdit(this)">
+                <div class="input-overlay" data-for="input-${groupId}"></div>
+                <input type="text" class="editable-input" id="input-${groupId}" value="商品名取得中..." onblur="disableEdit(this)">
             </div>
-            
             <div class="input-unit">
                 <label>割引JAN</label>
-                <div class="input-overlay" ondblclick="handleDblClick(this)" onclick="event.stopPropagation()"></div>
-                <input type="text" class="editable-input" id="discount-${groupId}" 
-                placeholder="未設定" onblur="disableEdit(this)">
+                <div class="input-overlay" data-for="discount-${groupId}"></div>
+                <input type="text" class="editable-input" id="discount-${groupId}" placeholder="未設定" onblur="disableEdit(this)">
             </div>
-            
             <div class="jan-display" style="font-size:10px; color:#999; text-align:right;">JAN: ${jan}</div>
         `;
+
+        // オーバーレイ部分のダブルタップ判定
+        groupDiv.querySelectorAll('.input-overlay').forEach(overlay => {
+            overlay.addEventListener('touchend', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const now = Date.now();
+                const timespan = now - lastTapTime;
+                
+                if (timespan < 300 && timespan > 0) {
+                    // ダブルタップ成立
+                    handleActivation(overlay);
+                } else {
+                    // シングルタップ：カード選択
+                    selectGroup(groupId);
+                }
+                lastTapTime = now;
+            });
+        });
+
         resultArea.insertBefore(groupDiv, resultArea.firstChild);
         return groupId;
     }
 
-    // ガード（オーバーレイ）をダブルクリックした時の処理
-    function handleDblClick(overlayEl) {
-        const input = overlayEl.nextElementSibling;
+    function handleActivation(overlayEl) {
+        const inputId = overlayEl.getAttribute('data-for');
+        const input = document.getElementById(inputId);
         const parent = overlayEl.closest('.product-group');
         
-        // 1. まずカードを選択状態にする
         selectGroup(parent.id);
-        
-        // 2. ガードを隠して入力欄を触れるようにする
         overlayEl.style.display = 'none';
         
-        // 3. 強制フォーカス＆キーボード起動
         setTimeout(() => {
             input.focus();
             const len = input.value.length;
@@ -201,7 +216,6 @@
         }, 10);
     }
 
-    // 入力からフォーカスが外れたらガードを復活させる
     function disableEdit(inputEl) {
         const overlay = inputEl.previousElementSibling;
         if (overlay && overlay.classList.contains('input-overlay')) {
@@ -219,10 +233,7 @@
         } catch (e) { return "通信エラー"; }
     }
 
-    function deleteRow(id) {
-        if(confirm('削除しますか？')) { document.getElementById(id)?.remove(); if(id === selectedGroupId) deselectAll(); }
-    }
-
+    function deleteRow(id) { if(confirm('削除しますか？')) { document.getElementById(id)?.remove(); if(id === selectedGroupId) deselectAll(); } }
     function resetScan() { document.getElementById('scan-popup').style.display = 'none'; isScanning = true; lastCodes = []; }
     function updateStatus(t, c) { const s = document.getElementById('status'); s.innerText = t; s.style.color = c; }
 
