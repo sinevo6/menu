@@ -3,58 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>型番OCRスキャナー (半角英数限定版)</title>
+    <title>型番コピペスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         .header-section { background: #fff; border-bottom: 1px solid #d1d1d6; z-index: 100; }
-        #interactive { width: 100%; height: 150px; background: #000; position: relative; overflow: hidden; }
+        #interactive { width: 100%; height: 160px; background: #000; position: relative; overflow: hidden; }
         #interactive video { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100% !important; height: auto !important; }
-        .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; height: 35px; border: 2px solid #007aff; border-radius: 4px; box-shadow: 0 0 0 999px rgba(0,0,0,0.6); z-index: 5; pointer-events: none; }
-        .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; min-height: 18px; }
-        .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 120px; -webkit-overflow-scrolling: touch; }
-        .bottom-controls { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.95); padding: 15px; display: flex; gap: 10px; border-top: 1px solid #d1d1d6; z-index: 1000; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+        .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; }
+        
+        .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 130px; }
+        
+        .bottom-controls { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.9); padding: 15px; display: flex; gap: 10px; border-top: 1px solid #d1d1d6; z-index: 1000; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
         .btn { border: none; border-radius: 10px; font-weight: bold; flex: 1; padding: 15px; font-size: 16px; }
         .btn-next { background: #007aff; color: white; }
         .btn-download { background: #34c759; color: white; }
-        .product-group { background: white; border-radius: 12px; margin-bottom: 12px; border: 1px solid #e5e5ea; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        .product-group { background: white; border-radius: 12px; margin-bottom: 12px; border: 1px solid #e5e5ea; padding: 12px; }
         .input-row { display: flex; gap: 8px; margin-bottom: 8px; }
-        .model-input { flex: 1; border: 2px solid #007aff; padding: 10px; border-radius: 8px; font-size: 17px; min-width: 0; font-family: monospace; }
-        .btn-ocr { background: #5856d6; color: white; width: 75px; font-size: 12px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: none; }
+        .model-input { flex: 1; border: 2px solid #007aff; padding: 10px; border-radius: 8px; font-size: 17px; }
+        
+        /* 撮影した写真を表示するエリア */
+        .captured-img { width: 100%; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; display: block; }
+        .capture-btn { background: #5856d6; color: white; border: none; padding: 10px; border-radius: 8px; font-size: 14px; margin-bottom: 5px; width: 100%; }
+        
+        .jan-label { font-size: 11px; color: #888; }
         canvas { display: none; }
     </style>
 </head>
 <body>
+
     <div class="header-section">
-        <div id="status" class="status-msg">型番を青枠の中央に合わせて右のボタン</div>
-        <div id="interactive"><div class="scan-guide"></div></div>
+        <div id="status" class="status-msg">JANをスキャンしてください</div>
+        <div id="interactive"></div>
     </div>
+
     <div id="result-area" class="list-container"></div>
+
     <div class="bottom-controls">
-        <button id="next-btn" class="btn btn-next" onclick="prepareNextScan()" disabled>次へ (確定)</button>
+        <button id="next-btn" class="btn btn-next" onclick="prepareNextScan()" disabled>次へ</button>
         <button class="btn btn-download" onclick="downloadCSV()">CSV保存</button>
     </div>
-    <canvas id="ocr-canvas"></canvas>
+
+    <canvas id="capture-canvas"></canvas>
 
     <script>
         let isWaitingForNext = false;
         let lastProductGroupId = null;
-        let worker = null;
-
-        // OCRエンジンの事前初期化 (英数字のみに限定)
-        async function initOCR() {
-            updateStatus("システム準備中...", "#5856d6");
-            worker = await Tesseract.createWorker();
-            await worker.loadLanguage('eng');
-            await worker.initialize('eng');
-            // 半角英数とハイフン、ドット、スラッシュのみ許可
-            await worker.setParameters({
-                tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-./',
-            });
-            updateStatus("準備完了。JANスキャン待機", "#ff3b30");
-        }
-        initOCR();
 
         Quagga.init({
             inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment" } },
@@ -68,7 +63,7 @@
             document.getElementById('next-btn').disabled = false;
             createNewProductGroup(code);
             if (window.navigator.vibrate) window.navigator.vibrate(100);
-            updateStatus("JAN完了。型番を枠に合わせてボタン", "#34c759");
+            updateStatus("JAN読込完了。型番を撮影してください", "#34c759");
         });
 
         function createNewProductGroup(jan) {
@@ -79,35 +74,45 @@
             groupDiv.className = 'product-group';
             groupDiv.id = groupId;
             groupDiv.dataset.prodJan = jan;
-            groupDiv.innerHTML = `<div class="input-row"><input type="text" class="model-input" id="input-${groupId}" placeholder="型番"><button class="btn btn-ocr" onclick="runOCR('${groupId}')"><span>📷</span><span>文字認識</span></button></div><span style="font-size:11px; color:#888;">JAN: ${jan}</span>`;
+            
+            groupDiv.innerHTML = `
+                <div class="input-row">
+                    <input type="text" class="model-input" id="input-${groupId}" placeholder="ここをタップしてペースト">
+                </div>
+                <button class="capture-btn" onclick="capturePhoto('${groupId}')">📷 型番を撮影（長押しでコピー用）</button>
+                <img id="img-${groupId}" class="captured-img" style="display:none;">
+                <span class="jan-label">JAN: ${jan}</span>
+            `;
             resultArea.insertBefore(groupDiv, resultArea.firstChild);
         }
 
-        async function runOCR(groupId) {
-            if (!worker) return;
-            updateStatus("解析中...", "#5856d6");
+        // 写真を撮る機能
+        function capturePhoto(groupId) {
             const video = document.querySelector('video');
-            const canvas = document.getElementById('ocr-canvas');
-            const ctx = canvas.getContext('2d');
-
-            // iPhoneのボケ対策：コントラストとシャープネスを極端に上げる
+            const canvas = document.getElementById('capture-canvas');
+            const img = document.getElementById(`img-${groupId}`);
+            
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            ctx.filter = 'grayscale(1) contrast(3) brightness(1.1) saturate(0)';
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            try {
-                const { data: { text } } = await worker.recognize(canvas);
-                // 改行や全角空白を徹底除去
-                const cleanText = text.replace(/[^0-9a-zA-Z\-\.\/]/g, "");
-                document.getElementById(`input-${groupId}`).value = cleanText;
-                updateStatus(cleanText ? "完了" : "失敗：もっと近づけて", cleanText ? "#34c759" : "#ff3b30");
-            } catch (e) { updateStatus("OCRエラー", "#ff3b30"); }
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // 写真を表示
+            img.src = canvas.toDataURL('image/png');
+            img.style.display = 'block';
+            updateStatus("写真を長押しして「テキストをコピー」", "#5856d6");
         }
 
-        function prepareNextScan() { isWaitingForNext = false; document.getElementById('next-btn').disabled = true; updateStatus("スキャン待機中", "#ff3b30"); }
-        function updateStatus(t, c) { const s = document.getElementById('status'); s.innerText = t; s.style.color = c; }
-        
+        function prepareNextScan() {
+            isWaitingForNext = false;
+            document.getElementById('next-btn').disabled = true;
+            updateStatus("スキャン待機中", "#ff3b30");
+        }
+
+        function updateStatus(t, c) {
+            const s = document.getElementById('status');
+            s.innerText = t; s.style.color = c;
+        }
+
         function downloadCSV() {
             let csvContent = "\uFEFF商品型番,商品JAN\n";
             document.querySelectorAll('.product-group').forEach(group => {
@@ -118,7 +123,7 @@
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `scan_${Date.now()}.csv`;
+            link.download = `scans.csv`;
             link.click();
         }
     </script>
