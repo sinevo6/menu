@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>自動取得＋手動撮影ハイブリッドスキャナー</title>
+    <title>型番スキャナー完全版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -21,7 +21,7 @@
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; min-height: 18px; }
         .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
         
-        .btn-main { border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; }
+        .btn-main { border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; -webkit-tap-highlight-color: transparent; }
         .btn-capture { background: #5856d6; color: white; }
         .btn-next { background: #007aff; color: white; }
         .btn-main:disabled { background: #d1d1d6; color: #8e8e93; }
@@ -40,7 +40,7 @@
 <body>
 
 <div class="fixed-top">
-    <div id="status" class="status-msg">バーコードをスキャンしてください</div>
+    <div id="status" class="status-msg">JANをスキャンしてください</div>
     <div id="interactive">
         <div id="confirm-overlay">
             <div style="font-size: 16px;">JAN: <span id="scanned-jan">---</span></div>
@@ -51,8 +51,8 @@
         </div>
     </div>
     <div class="action-area">
-        <button id="cap-btn" class="btn-main btn-capture" onclick="capturePhoto()" disabled>📷 型番を撮影 (コピペ用)</button>
-        <button id="next-btn" class="btn-main btn-next" onclick="prepareNextScan()" disabled>次へ (スキャン再開)</button>
+        <button id="cap-btn" class="btn-main btn-capture" onclick="capturePhoto()" disabled>📷 型番を撮影 (手動修正用)</button>
+        <button id="next-btn" class="btn-main btn-next" onclick="prepareNextScan()" disabled>次へ (確定して次のスキャン)</button>
     </div>
 </div>
 
@@ -65,19 +65,22 @@
 <canvas id="capture-canvas"></canvas>
 
 <script>
-    // --------------------------------------------------
+    // ==========================================
+    // 取得した Yahoo Client ID をここに入力
+    // ==========================================
     const YAHOO_APP_ID = 'dmVyPTIwMjUwNyZpZD1HYWY1RGV1Q1NWJmhhc2g9TlRJM1ltVXdZVGhtWW1WaFlXTTRaUQ'; 
-    // --------------------------------------------------
 
     let isScanning = true;
     let tempJan = null;
     let lastProductGroupId = null;
 
+    // Quagga (バーコードスキャナ) の初期化
     Quagga.init({
         inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment" } },
         decoder: { readers: ["ean_reader"] }
     }, (err) => { if (!err) Quagga.start(); });
 
+    // バーコードを検知したとき
     Quagga.onDetected((result) => {
         if (!isScanning) return;
         isScanning = false;
@@ -85,31 +88,39 @@
         document.getElementById('scanned-jan').innerText = tempJan;
         document.getElementById('confirm-overlay').style.display = 'flex';
         if (window.navigator.vibrate) window.navigator.vibrate(100);
+        updateStatus("JANを確認してください", "#ff9500");
     });
 
+    // 「OK」を押したとき (自動取得開始)
     async function confirmJan() {
         document.getElementById('confirm-overlay').style.display = 'none';
         document.getElementById('cap-btn').disabled = false;
         document.getElementById('next-btn').disabled = false;
         
         const groupId = createNewProductGroup(tempJan);
-        updateStatus("商品名を検索中...", "#5856d6");
+        updateStatus("APIで商品情報を取得中...", "#5856d6");
 
-        // APIで商品名取得を試みる
         const foundName = await fetchProductName(tempJan);
         document.getElementById(`input-${groupId}`).value = foundName;
-        updateStatus(foundName.includes("エラー") ? "自動取得失敗：撮影してください" : "自動取得完了！", "#34c759");
+        updateStatus("完了！必要なら撮影して修正してください", "#34c759");
     }
 
+    // Yahoo APIで商品名を取得する関数 (CORS回避プロキシ付き)
     async function fetchProductName(jan) {
-        if (YAHOO_APP_ID === 'ここに入れてください') return "【ID未設定】撮影して入力";
+        if (YAHOO_APP_ID.includes('ここに')) return "【ID未設定】撮影して入力";
         try {
-            const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${YAHOO_APP_ID}&jan_code=${jan}&results=1`;
-            const response = await fetch(url);
+            // CORS制限を回避するためのプロキシ
+            const proxy = "https://corsproxy.io/?";
+            const targetUrl = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${YAHOO_APP_ID}&jan_code=${jan}&results=1`;
+            
+            const response = await fetch(proxy + encodeURIComponent(targetUrl));
+            if (!response.ok) throw new Error('Network error');
+            
             const data = await response.json();
-            return (data.hits && data.hits.length > 0) ? data.hits[0].name : "見つかりません（撮影してください）";
+            return (data.hits && data.hits.length > 0) ? data.hits[0].name : "検索ヒットなし（撮影してください）";
         } catch (e) {
-            return "取得エラー（撮影してください）";
+            console.error(e);
+            return "取得失敗（撮影してコピペしてください）";
         }
     }
 
@@ -122,7 +133,7 @@
         groupDiv.id = groupId;
         groupDiv.dataset.prodJan = jan;
         groupDiv.innerHTML = `
-            <input type="text" class="model-input" id="input-${groupId}" placeholder="商品名またはペースト">
+            <input type="text" class="model-input" id="input-${groupId}" placeholder="商品名または型番を入力">
             <span class="jan-label">JAN: ${jan}</span>
             <img id="img-${groupId}" class="captured-img">
         `;
@@ -130,6 +141,7 @@
         return groupId;
     }
 
+    // 型番撮影 (コピペ用)
     function capturePhoto() {
         if (!lastProductGroupId) return;
         const video = document.querySelector('video');
@@ -140,7 +152,17 @@
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
         img.src = canvas.toDataURL('image/png');
         img.style.display = 'block';
-        updateStatus("画像を長押ししてコピペ修正可", "#5856d6");
+        updateStatus("写真内の文字を長押ししてコピー！", "#5856d6");
+    }
+
+    // 次へ (スキャン再開 & 写真非表示)
+    function prepareNextScan() {
+        document.querySelectorAll('.captured-img').forEach(el => el.style.display = 'none');
+        isScanning = true;
+        tempJan = null;
+        document.getElementById('cap-btn').disabled = true;
+        document.getElementById('next-btn').disabled = true;
+        updateStatus("次のバーコードを待機中", "#ff3b30");
     }
 
     function resetScan() {
@@ -149,21 +171,13 @@
         updateStatus("スキャン待機中", "#ff3b30");
     }
 
-    function prepareNextScan() {
-        document.querySelectorAll('.captured-img').forEach(el => el.style.display = 'none');
-        isScanning = true;
-        document.getElementById('cap-btn').disabled = true;
-        document.getElementById('next-btn').disabled = true;
-        updateStatus("次のバーコードを待機", "#ff3b30");
-    }
-
     function updateStatus(t, c) {
-        document.getElementById('status').innerText = t;
-        document.getElementById('status').style.color = c;
+        const s = document.getElementById('status');
+        s.innerText = t; s.style.color = c;
     }
 
     function downloadCSV() {
-        let csvContent = "\uFEFF商品名,JAN\n";
+        let csvContent = "\uFEFF商品名/型番,JAN\n";
         document.querySelectorAll('.product-group').forEach(group => {
             const name = group.querySelector('.model-input').value || "";
             const jan = group.dataset.prodJan;
@@ -172,7 +186,7 @@
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `scans.csv`;
+        link.download = `scans_${new Date().getTime()}.csv`;
         link.click();
     }
 </script>
