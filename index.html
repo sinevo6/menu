@@ -3,34 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>型番コピペスキャナー</title>
+    <title>型番コピペスキャナー改</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* 上部：スキャナと操作系（固定） */
+        /* 固定ヘッダー */
         .fixed-top { background: #fff; border-bottom: 1px solid #d1d1d6; z-index: 100; flex-shrink: 0; }
-        #interactive { width: 100%; height: 160px; background: #000; position: relative; overflow: hidden; }
+        #interactive { width: 100%; height: 150px; background: #000; position: relative; overflow: hidden; }
         #interactive video { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100% !important; height: auto !important; }
         
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; min-height: 18px; }
         
-        /* 撮影ボタンエリア */
-        .action-area { padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #d1d1d6; }
-        .capture-btn { background: #5856d6; color: white; border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; }
-        .capture-btn:active { opacity: 0.7; }
+        .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; }
+        .capture-btn { background: #5856d6; color: white; border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; -webkit-tap-highlight-color: transparent; }
+        .capture-btn:disabled { background: #d1d1d6; color: #8e8e93; }
 
-        /* 下部：スキャン結果リスト（スクロール） */
+        /* リストエリア */
         .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; -webkit-overflow-scrolling: touch; }
         
-        /* 商品カード */
-        .product-group { background: white; border-radius: 12px; margin-bottom: 12px; border: 1px solid #e5e5ea; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .input-row { display: flex; flex-direction: column; gap: 8px; }
+        .product-group { background: white; border-radius: 12px; margin-bottom: 10px; border: 1px solid #e5e5ea; padding: 12px; }
+        .input-row { display: flex; flex-direction: column; gap: 5px; }
         .model-input { width: 100%; border: 2px solid #007aff; padding: 12px; border-radius: 8px; font-size: 17px; box-sizing: border-box; }
-        .captured-img { width: 100%; border-radius: 8px; margin-top: 8px; border: 1px solid #eee; }
-        .jan-label { font-size: 11px; color: #888; margin-top: 4px; display: block; }
+        
+        /* 写真のスタイル */
+        .captured-img { width: 100%; border-radius: 8px; margin-top: 10px; border: 1px solid #eee; display: none; }
+        
+        .jan-label { font-size: 11px; color: #888; margin-top: 4px; }
 
-        /* 保存ボタン */
         .footer-save { position: fixed; bottom: 0; width: 100%; background: rgba(255,255,255,0.9); padding: 15px; padding-bottom: calc(15px + env(safe-area-inset-bottom)); border-top: 1px solid #d1d1d6; box-sizing: border-box; }
         .btn-download { background: #34c759; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 16px; }
 
@@ -43,7 +43,7 @@
         <div id="status" class="status-msg">JANをスキャンしてください</div>
         <div id="interactive"></div>
         <div class="action-area">
-            <button id="cap-btn" class="capture-btn" onclick="capturePhoto()" disabled>📷 型番を撮影（JAN読込後に有効）</button>
+            <button id="cap-btn" class="capture-btn" onclick="capturePhoto()" disabled>📷 型番を撮影</button>
         </div>
     </div>
 
@@ -59,25 +59,22 @@
         let isWaitingForNext = false;
         let lastProductGroupId = null;
 
-        // Quagga（バーコード）初期化
         Quagga.init({
             inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment" } },
             decoder: { readers: ["ean_reader"] }
         }, (err) => { if (!err) Quagga.start(); });
 
-        // バーコード検知時
         Quagga.onDetected((result) => {
             if (isWaitingForNext) return;
             const code = result.codeResult.code;
             isWaitingForNext = true;
             
-            // 撮影ボタンを有効化
             document.getElementById('cap-btn').disabled = false;
             document.getElementById('cap-btn').innerText = "📷 型番を撮影する";
 
             createNewProductGroup(code);
             if (window.navigator.vibrate) window.navigator.vibrate(100);
-            updateStatus("JAN読込完了。型番を撮影してください", "#34c759");
+            updateStatus("JAN完了。型番を撮影してください", "#34c759");
         });
 
         function createNewProductGroup(jan) {
@@ -91,18 +88,19 @@
             
             groupDiv.innerHTML = `
                 <div class="input-row">
-                    <input type="text" class="model-input" id="input-${groupId}" placeholder="ここをタップしてペースト">
+                    <input type="text" class="model-input" id="input-${groupId}" placeholder="ここを長押ししてペースト">
                     <span class="jan-label">JAN: ${jan}</span>
-                    <img id="img-${groupId}" class="captured-img" style="display:none;">
+                    <img id="img-${groupId}" class="captured-img">
                 </div>
             `;
-            // 最新のスキャンを一番上に
             resultArea.insertBefore(groupDiv, resultArea.firstChild);
         }
 
-        // 写真撮影
         function capturePhoto() {
             if (!lastProductGroupId) return;
+
+            // 以前の写真をすべて非表示にする
+            document.querySelectorAll('.captured-img').forEach(el => el.style.display = 'none');
 
             const video = document.querySelector('video');
             const canvas = document.getElementById('capture-canvas');
@@ -113,11 +111,10 @@
             canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
             
             img.src = canvas.toDataURL('image/png');
-            img.style.display = 'block';
+            img.style.display = 'block'; // 今回撮った写真だけ表示
             
-            updateStatus("写真を長押ししてコピー＆ペースト！", "#5856d6");
+            updateStatus("写真を長押ししてコピペ！", "#5856d6");
             
-            // 次のスキャンへ
             isWaitingForNext = false;
             document.getElementById('cap-btn').disabled = true;
             document.getElementById('cap-btn').innerText = "次のバーコードを待機中...";
@@ -138,7 +135,7 @@
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `scan_result.csv`;
+            link.download = `scans.csv`;
             link.click();
         }
     </script>
