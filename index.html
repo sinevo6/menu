@@ -3,21 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>スマートWスキャナー(削除修正版)</title>
+    <title>視認性改善版 Wスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         .fixed-top { background: #fff; border-bottom: 1px solid #d1d1d6; z-index: 1000; flex-shrink: 0; }
-        #interactive { width: 100%; height: 160px; background: #000; position: relative; overflow: hidden; }
+        
+        /* カメラエリア：確認画面を被せないように改善 */
+        #interactive { width: 100%; height: 180px; background: #000; position: relative; overflow: hidden; }
         #interactive video { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100% !important; height: auto !important; }
-        .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 50px; border: 2px solid #34c759; box-shadow: 0 0 0 1000px rgba(0,0,0,0.3); pointer-events: none; z-index: 5; }
+        .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75%; height: 60px; border: 2px solid #34c759; box-shadow: 0 0 0 1000px rgba(0,0,0,0.3); pointer-events: none; z-index: 5; }
+
+        /* スキャン成功時のポップアップ（カメラを塞がない） */
+        #scan-popup { 
+            position: absolute; bottom: 10px; left: 10px; right: 10px; 
+            background: rgba(255, 255, 255, 0.95); border-radius: 12px; 
+            padding: 12px; display: none; flex-direction: row; 
+            align-items: center; justify-content: space-between; 
+            z-index: 100; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            backdrop-filter: blur(5px); border: 1px solid #ddd;
+        }
         
-        #confirm-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); color: white; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; }
-        .confirm-btns { display: flex; gap: 15px; margin-top: 10px; }
-        .c-btn { border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; }
-        
-        .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 10px; color: #ff3b30; min-height: 18px; background: #fff; }
+        .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; min-height: 18px; background: #fff; }
         .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
         
         .btn-row { display: flex; gap: 8px; }
@@ -29,42 +37,22 @@
 
         .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; }
         
-        /* 商品カードのスタイル */
         .product-group { 
-            background: white; 
-            border-radius: 12px; 
-            margin-bottom: 15px; 
-            border: 1px solid #e5e5ea; 
-            padding: 15px; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 12px; 
-            position: relative; /* ボタンの基準点 */
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            background: white; border-radius: 12px; margin-bottom: 15px; 
+            border: 1px solid #e5e5ea; padding: 15px; display: flex; 
+            flex-direction: column; gap: 10px; position: relative;
         }
         
-        /* 削除ボタンを絶対配置で最前面へ */
+        /* 削除ボタン：右上にスッキリ配置 */
         .del-btn { 
-            position: absolute; 
-            top: -10px; 
-            right: -10px; 
-            background: #ff3b30; 
-            color: white; 
-            border: 2px solid white; 
-            width: 32px; 
-            height: 32px; 
-            border-radius: 16px; 
-            font-weight: bold; 
-            font-size: 18px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            z-index: 100; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            cursor: pointer;
+            position: absolute; top: 10px; right: 10px; 
+            background: #ff3b30; color: white; border: none; 
+            width: 28px; height: 28px; border-radius: 14px; 
+            font-size: 16px; font-weight: bold; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
         }
 
-        .input-unit { display: flex; flex-direction: column; gap: 4px; }
+        .input-unit { display: flex; flex-direction: column; gap: 4px; padding-right: 30px; }
         .input-unit label { font-size: 11px; color: #555; font-weight: bold; }
         .model-input { width: 100%; border: 1px solid #d1d1d6; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
         .discount-input { width: 100%; border: 1px solid #d1d1d6; padding: 10px; border-radius: 8px; font-size: 16px; background: #f9fff9; box-sizing: border-box; }
@@ -80,12 +68,15 @@
     <div id="status" class="status-msg">商品JANをスキャンしてください</div>
     <div id="interactive">
         <div class="scan-guide"></div>
-        <div id="confirm-overlay">
-            <div style="font-size: 14px; margin-bottom: 5px;" id="mode-text">読み取り完了</div>
-            <div style="font-size: 24px; font-weight: bold;"><span id="scanned-jan">---</span></div>
-            <div class="confirm-btns">
-                <button class="c-btn" style="background:#34c759; color:white;" onclick="confirmScan()">OK</button>
-                <button class="c-btn" style="background:#ff3b30; color:white;" onclick="resetScan()">やり直し</button>
+        <!-- カメラを塞がない確認用ポップアップ -->
+        <div id="scan-popup">
+            <div>
+                <div style="font-size: 10px; color: #666;" id="mode-text">読み取り完了</div>
+                <div style="font-size: 18px; font-weight: bold; color: #333;" id="scanned-jan">---</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="resetScan()" style="background:#eee; border:none; padding:10px 15px; border-radius:8px;">リトライ</button>
+                <button onclick="confirmScan()" style="background:#34c759; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold;">OK</button>
             </div>
         </div>
     </div>
@@ -121,11 +112,12 @@
         tempJan = result.codeResult.code;
         document.getElementById('scanned-jan').innerText = tempJan;
         document.getElementById('mode-text').innerText = (scanTarget === 'PRODUCT') ? "商品JAN" : "割引JAN";
-        document.getElementById('confirm-overlay').style.display = 'flex';
+        document.getElementById('scan-popup').style.display = 'flex';
+        if (window.navigator.vibrate) window.navigator.vibrate(50);
     });
 
     async function confirmScan() {
-        document.getElementById('confirm-overlay').style.display = 'none';
+        document.getElementById('scan-popup').style.display = 'none';
         if (scanTarget === 'PRODUCT') {
             lastGroupId = createNewProductGroup(tempJan);
             updateStatus("商品名取得中...", "#007aff");
@@ -186,14 +178,13 @@
         groupDiv.dataset.prodJan = jan;
         
         groupDiv.innerHTML = `
-            <div class="del-btn" onclick="deleteRow('${groupId}')">×</div>
+            <button class="del-btn" onclick="deleteRow('${groupId}')">×</button>
             <div class="input-unit"><label>型番/商品名</label>
             <input type="text" class="model-input" id="input-${groupId}"></div>
             <div class="input-unit"><label>割引施策JAN</label>
             <input type="text" class="discount-input" id="discount-${groupId}"></div>
             <div style="font-size:10px; color:#999; text-align:right;">JAN: ${jan}</div>
         `;
-        // 新しいものを上に表示
         resultArea.insertBefore(groupDiv, resultArea.firstChild);
         return groupId;
     }
@@ -215,7 +206,7 @@
     }
 
     function resetScan() {
-        document.getElementById('confirm-overlay').style.display = 'none';
+        document.getElementById('scan-popup').style.display = 'none';
         isScanning = true;
     }
 
