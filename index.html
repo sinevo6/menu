@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>型番・割引JANスキャナー</title>
+    <title>型番・割引スキャナー(Wスキャン版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -15,55 +15,56 @@
         .c-btn { border: none; padding: 10px 25px; border-radius: 8px; font-weight: bold; }
         .btn-ok { background: #34c759; color: white; }
         .btn-cancel { background: #ff3b30; color: white; }
+        
+        /* モード表示 */
+        .mode-indicator { background: #007aff; color: white; text-align: center; font-size: 14px; font-weight: bold; padding: 5px; }
+        .mode-discount { background: #34c759; }
+
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; min-height: 18px; }
         .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
-        .btn-main { border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; -webkit-tap-highlight-color: transparent; }
-        .btn-capture { background: #5856d6; color: white; }
+        .btn-main { border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; }
         .btn-next { background: #007aff; color: white; }
-        .btn-main:disabled { background: #d1d1d6; color: #8e8e93; }
-        .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; -webkit-overflow-scrolling: touch; }
+        
+        .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; }
         .product-group { background: white; border-radius: 12px; margin-bottom: 10px; border: 1px solid #e5e5ea; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
         .input-unit { display: flex; flex-direction: column; gap: 3px; }
         .input-unit label { font-size: 11px; color: #555; font-weight: bold; }
         .model-input { width: 100%; border: 2px solid #007aff; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
         .discount-input { width: 100%; border: 2px solid #34c759; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
-        .captured-img { width: 100%; border-radius: 8px; margin-top: 5px; border: 1px solid #eee; display: none; }
         .jan-label { font-size: 11px; color: #888; }
-        .footer-save { position: fixed; bottom: 0; width: 100%; background: rgba(255,255,255,0.95); padding: 15px; border-top: 1px solid #d1d1d6; box-sizing: border-box; }
+        .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 15px; border-top: 1px solid #d1d1d6; }
         .btn-download { background: #34c759; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; }
-        canvas { display: none; }
     </style>
 </head>
 <body>
 
 <div class="fixed-top">
-    <div id="status" class="status-msg">商品JANをスキャンしてください</div>
+    <div id="mode-bar" class="mode-indicator">商品JAN スキャン待機中</div>
     <div id="interactive">
         <div id="confirm-overlay">
             <div style="font-size: 16px;">JAN: <span id="scanned-jan">---</span></div>
             <div class="confirm-btns">
-                <button class="c-btn btn-ok" onclick="confirmJan()">OK (確定)</button>
+                <button class="c-btn btn-ok" onclick="confirmScan()">OK</button>
                 <button class="c-btn btn-cancel" onclick="resetScan()">やり直し</button>
             </div>
         </div>
     </div>
+    <div class="status-msg" id="status">バーコードを枠内にいれてください</div>
     <div class="action-area">
-        <button id="cap-btn" class="btn-main btn-capture" onclick="capturePhoto()" disabled>📷 型番・割引JANを撮影</button>
-        <button id="next-btn" class="btn-main btn-next" onclick="prepareNextScan()" disabled>次へ (保存してスキャン再開)</button>
+        <button id="next-btn" class="btn-main btn-next" onclick="finishProduct()" disabled>次へ (保存して商品スキャンへ)</button>
     </div>
 </div>
 
 <div id="result-area" class="list-container"></div>
 <div class="footer-save"><button class="btn-download" onclick="downloadCSV()">CSVを保存する</button></div>
-<canvas id="capture-canvas"></canvas>
 
 <script>
-    // 提供いただいた Client ID を設定済み
     const YAHOO_APP_ID = 'dmVyPTIwMjUwNyZpZD1HYWY1RGV1Q1NWJmhhc2g9TlRJM1ltVXdZVGhtWW1WaFlXTTRaUQ'; 
 
     let isScanning = true;
+    let scanMode = 'PRODUCT'; // 'PRODUCT' or 'DISCOUNT'
     let tempJan = null;
-    let lastProductGroupId = null;
+    let currentGroupId = null;
 
     Quagga.init({
         inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment" } },
@@ -79,17 +80,28 @@
         if (window.navigator.vibrate) window.navigator.vibrate(100);
     });
 
-    async function confirmJan() {
+    async function confirmScan() {
         document.getElementById('confirm-overlay').style.display = 'none';
-        document.getElementById('cap-btn').disabled = false;
-        document.getElementById('next-btn').disabled = false;
         
-        const groupId = createNewProductGroup(tempJan);
-        updateStatus("商品情報を取得中...", "#5856d6");
-
-        const foundName = await fetchProductName(tempJan);
-        document.getElementById(`input-${groupId}`).value = foundName;
-        updateStatus("取得完了。割引JANを入力してください", "#34c759");
+        if (scanMode === 'PRODUCT') {
+            // 商品JANのスキャン完了
+            currentGroupId = createNewProductGroup(tempJan);
+            updateStatus("商品名を取得中...", "#5856d6");
+            const foundName = await fetchProductName(tempJan);
+            document.getElementById(`input-${currentGroupId}`).value = foundName;
+            
+            // 割引JANスキャンモードへ切り替え
+            scanMode = 'DISCOUNT';
+            setModeDisplay("割引JAN スキャン待機中", true);
+            updateStatus("割引バーコードをスキャンしてください", "#34c759");
+            isScanning = true; // スキャン再開
+            document.getElementById('next-btn').disabled = false;
+        } else {
+            // 割引JANのスキャン完了
+            document.getElementById(`discount-${currentGroupId}`).value = tempJan;
+            updateStatus("割引JAN入力完了。さらにスキャンも可能", "#34c759");
+            isScanning = true; // 続けてスキャン可能（上書き）
+        }
     }
 
     async function fetchProductName(jan) {
@@ -105,52 +117,39 @@
     function createNewProductGroup(jan) {
         const resultArea = document.getElementById('result-area');
         const groupId = 'prod-' + Date.now();
-        lastProductGroupId = groupId;
         const groupDiv = document.createElement('div');
         groupDiv.className = 'product-group';
         groupDiv.id = groupId;
         groupDiv.dataset.prodJan = jan;
-        
         groupDiv.innerHTML = `
-            <div class="input-unit">
-                <label>商品名・型番</label>
-                <input type="text" class="model-input" id="input-${groupId}" onclick="this.select()" placeholder="型番/商品名">
-            </div>
-            <div class="input-unit">
-                <label>割引施策JAN</label>
-                <input type="text" class="discount-input" id="discount-${groupId}" placeholder="割引JANを入力・ペースト">
-            </div>
+            <div class="input-unit"><label>商品名・型番</label>
+            <input type="text" class="model-input" id="input-${groupId}" onclick="this.select()"></div>
+            <div class="input-unit"><label>割引施策JAN</label>
+            <input type="text" class="discount-input" id="discount-${groupId}" placeholder="スキャンで自動入力"></div>
             <span class="jan-label">商品JAN: ${jan}</span>
-            <img id="img-${groupId}" class="captured-img">
         `;
         resultArea.insertBefore(groupDiv, resultArea.firstChild);
         return groupId;
     }
 
-    function capturePhoto() {
-        if (!lastProductGroupId) return;
-        const video = document.querySelector('video');
-        const canvas = document.getElementById('capture-canvas');
-        const img = document.getElementById(`img-${lastProductGroupId}`);
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-        img.src = canvas.toDataURL('image/png');
-        img.style.display = 'block';
-        updateStatus("画像を長押ししてコピペ可能", "#5856d6");
-    }
-
-    function prepareNextScan() {
-        document.querySelectorAll('.captured-img').forEach(el => el.style.display = 'none');
+    function finishProduct() {
+        scanMode = 'PRODUCT';
+        setModeDisplay("商品JAN スキャン待機中", false);
         isScanning = true;
-        document.getElementById('cap-btn').disabled = true;
         document.getElementById('next-btn').disabled = true;
-        updateStatus("次の商品JANを待機中", "#ff3b30");
+        updateStatus("次の商品のJANをスキャン", "#ff3b30");
     }
 
     function resetScan() {
         document.getElementById('confirm-overlay').style.display = 'none';
         isScanning = true;
-        updateStatus("スキャン待機中", "#ff3b30");
+    }
+
+    function setModeDisplay(text, isDiscount) {
+        const bar = document.getElementById('mode-bar');
+        bar.innerText = text;
+        if (isDiscount) bar.classList.add('mode-discount');
+        else bar.classList.remove('mode-discount');
     }
 
     function updateStatus(t, c) {
