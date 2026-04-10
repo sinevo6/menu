@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>型番・割引撮影スキャナー</title>
+    <title>型番・割引 撮影スキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -15,24 +15,30 @@
         .c-btn { border: none; padding: 10px 25px; border-radius: 8px; font-weight: bold; }
         .btn-ok { background: #34c759; color: white; }
         .btn-cancel { background: #ff3b30; color: white; }
+        
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; min-height: 18px; }
         .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
-        .btn-main { border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; -webkit-tap-highlight-color: transparent; }
-        .btn-capture { background: #5856d6; color: white; }
-        .btn-next { background: #007aff; color: white; }
+        .btn-row { display: flex; gap: 8px; }
+        .btn-main { border: none; padding: 12px; border-radius: 12px; font-size: 14px; font-weight: bold; width: 100%; -webkit-tap-highlight-color: transparent; }
+        .btn-cap-model { background: #5856d6; color: white; }
+        .btn-cap-discount { background: #af52de; color: white; }
+        .btn-next { background: #007aff; color: white; padding: 15px; font-size: 16px; }
         .btn-main:disabled { background: #d1d1d6; color: #8e8e93; }
 
         .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; }
-        .product-group { background: white; border-radius: 12px; margin-bottom: 10px; border: 1px solid #e5e5ea; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .product-group { background: white; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e5ea; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
         
-        .input-unit { display: flex; flex-direction: column; gap: 3px; }
+        .input-unit { display: flex; flex-direction: column; gap: 4px; }
         .input-unit label { font-size: 11px; color: #555; font-weight: bold; }
         .model-input { width: 100%; border: 2px solid #007aff; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
         .discount-input { width: 100%; border: 2px solid #34c759; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
         
-        .captured-img { width: 100%; border-radius: 8px; margin-top: 5px; border: 1px solid #eee; display: none; }
-        .jan-label { font-size: 11px; color: #888; }
-
+        .img-container { display: flex; gap: 5px; margin-top: 5px; }
+        .captured-img-box { flex: 1; position: relative; }
+        .captured-img-box span { position: absolute; top: 2px; left: 2px; background: rgba(0,0,0,0.6); color: white; font-size: 9px; padding: 2px 4px; border-radius: 4px; pointer-events: none; }
+        .captured-img { width: 100%; border-radius: 6px; border: 1px solid #ddd; display: none; aspect-ratio: 4/3; object-fit: cover; }
+        
+        .jan-label { font-size: 11px; color: #888; border-top: 1px solid #eee; pt: 5px; }
         .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 15px; border-top: 1px solid #d1d1d6; box-sizing: border-box; }
         .btn-download { background: #34c759; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; }
         canvas { display: none; }
@@ -52,7 +58,10 @@
         </div>
     </div>
     <div class="action-area">
-        <button id="cap-btn" class="btn-main btn-capture" onclick="capturePhoto()" disabled>📷 型番・割引JANを撮影</button>
+        <div class="btn-row">
+            <button id="cap-model-btn" class="btn-main btn-cap-model" onclick="capturePhoto('model')" disabled>📷 型番撮影</button>
+            <button id="cap-discount-btn" class="btn-main btn-cap-discount" onclick="capturePhoto('discount')" disabled>📷 割引JAN撮影</button>
+        </div>
         <button id="next-btn" class="btn-main btn-next" onclick="prepareNextScan()" disabled>次へ</button>
     </div>
 </div>
@@ -83,7 +92,8 @@
 
     async function confirmJan() {
         document.getElementById('confirm-overlay').style.display = 'none';
-        document.getElementById('cap-btn').disabled = false;
+        document.getElementById('cap-model-btn').disabled = false;
+        document.getElementById('cap-discount-btn').disabled = false;
         document.getElementById('next-btn').disabled = false;
         
         lastGroupId = createNewProductGroup(tempJan);
@@ -91,7 +101,7 @@
 
         const foundName = await fetchProductName(tempJan);
         document.getElementById(`input-${lastGroupId}`).value = foundName;
-        updateStatus("撮影ボタンで情報を記録してください", "#34c759");
+        updateStatus("それぞれのボタンで撮影してください", "#34c759");
     }
 
     async function fetchProductName(jan) {
@@ -121,32 +131,46 @@
                 <label>割引施策JAN</label>
                 <input type="text" class="discount-input" id="discount-${groupId}" placeholder="割引JANを貼り付け">
             </div>
-            <span class="jan-label">商品JAN: ${jan}</span>
-            <img id="img-${groupId}" class="captured-img">
+            
+            <div class="img-container">
+                <div class="captured-img-box">
+                    <span>型番用</span>
+                    <img id="img-model-${groupId}" class="captured-img">
+                </div>
+                <div class="captured-img-box">
+                    <span>割引用</span>
+                    <img id="img-discount-${groupId}" class="captured-img">
+                </div>
+            </div>
+            
+            <div class="jan-label">商品JAN: ${jan}</div>
         `;
         resultArea.insertBefore(groupDiv, resultArea.firstChild);
         return groupId;
     }
 
-    function capturePhoto() {
+    function capturePhoto(type) {
         if (!lastGroupId) return;
         const video = document.querySelector('video');
         const canvas = document.getElementById('capture-canvas');
-        const img = document.getElementById(`img-${lastGroupId}`);
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        const img = document.getElementById(`img-${type}-${lastGroupId}`);
+        
+        canvas.width = video.videoWidth; 
+        canvas.height = video.videoHeight;
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        
         img.src = canvas.toDataURL('image/png');
         img.style.display = 'block';
-        updateStatus("写真の文字を長押ししてコピペ！", "#5856d6");
+        updateStatus("写真を長押ししてコピペしてください", "#5856d6");
     }
 
     function prepareNextScan() {
-        // 保存済みの写真は非表示にして画面をスッキリさせる
         document.querySelectorAll('.captured-img').forEach(el => el.style.display = 'none');
         isScanning = true;
-        document.getElementById('cap-btn').disabled = true;
+        document.getElementById('cap-model-btn').disabled = true;
+        document.getElementById('cap-discount-btn').disabled = true;
         document.getElementById('next-btn').disabled = true;
-        updateStatus("次の商品JANをスキャン", "#ff3b30");
+        updateStatus("次の商品JANを待機中", "#ff3b30");
     }
 
     function resetScan() {
