@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>操作改善版 Wスキャナー</title>
+    <title>操作完全ガード版 Wスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -17,7 +17,7 @@
             background: rgba(255, 255, 255, 0.98); border-radius: 12px; 
             padding: 12px; display: none; flex-direction: row; 
             align-items: center; justify-content: space-between; 
-            z-index: 100; box-shadow: 0 8px 20px rgba(0,0,0,0.4); border: 2px solid #007aff;
+            z-index: 1000; box-shadow: 0 8px 20px rgba(0,0,0,0.4); border: 2px solid #007aff;
         }
         
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #8e8e93; }
@@ -33,28 +33,28 @@
             background: white; border-radius: 12px; margin-bottom: 12px; 
             border: 2px solid transparent; padding: 15px; position: relative; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: all 0.2s;
-            user-select: none;
         }
         .product-group.selected { border-color: #007aff; background-color: #f0f7ff; }
         .selected-badge { display: none; position: absolute; top: -10px; left: 10px; background: #007aff; color: white; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
         .product-group.selected .selected-badge { display: block; }
 
-        .del-btn { position: absolute; top: 10px; right: 10px; background: #ff3b30; color: white; border: none; width: 28px; height: 28px; border-radius: 14px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 20; }
-        .input-unit { display: flex; flex-direction: column; gap: 4px; padding-right: 35px; margin-bottom: 8px; }
+        .del-btn { position: absolute; top: 10px; right: 10px; background: #ff3b30; color: white; border: none; width: 28px; height: 28px; border-radius: 14px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 200; }
+        
+        .input-unit { display: flex; flex-direction: column; gap: 4px; padding-right: 35px; margin-bottom: 8px; position: relative; }
         .input-unit label { font-size: 11px; color: #8e8e93; font-weight: bold; }
         
-        /* 初期状態ではクリックをスルーさせる */
+        /* 透明なガードレイヤー */
+        .input-overlay {
+            position: absolute; bottom: 0; left: 0; right: 0; top: 15px;
+            z-index: 100; background: transparent;
+        }
+        
         .editable-input { 
             width: 100%; border: 1px solid #d1d1d6; padding: 10px; 
             border-radius: 8px; font-size: 16px; box-sizing: border-box; 
-            background: #fff; pointer-events: none; 
+            background: #fff;
         }
-        /* 編集モード時のみクリックを許可 */
-        .editable-input.editing { 
-            pointer-events: auto !important;
-            border-color: #007aff;
-            background: #ffffff;
-        }
+        .editable-input:focus { border-color: #007aff; outline: none; z-index: 150; }
         
         .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 12px; border-top: 1px solid #d1d1d6; z-index: 500; }
         .btn-download { background: #ff9500; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 16px; }
@@ -63,7 +63,7 @@
 <body>
 
 <div class="fixed-top">
-    <div id="status" class="status-msg">1タップで選択、Wタップで編集</div>
+    <div id="status" class="status-msg">1タップでカード選択 / Wタップで直接編集</div>
     <div id="interactive">
         <div class="scan-guide" id="guide"></div>
         <div id="scan-popup">
@@ -145,8 +145,6 @@
     function deselectAll() {
         document.querySelectorAll('.product-group').forEach(el => el.classList.remove('selected'));
         selectedGroupId = null; document.getElementById('scan-discount-btn').disabled = true;
-        // すべての編集モードを解除
-        document.querySelectorAll('.editable-input').forEach(input => disableEdit(input));
     }
 
     function createNewProductGroup(jan) {
@@ -158,53 +156,57 @@
         groupDiv.dataset.prodJan = jan;
         
         // カード全体のタップ処理
-        groupDiv.onclick = (e) => {
-            // 入力中ならセレクト処理をスキップ
-            if (e.target.classList.contains('editing')) return;
-            selectGroup(groupId);
-        };
+        groupDiv.onclick = () => selectGroup(groupId);
         
         groupDiv.innerHTML = `
             <div class="selected-badge">選択中</div>
             <button class="del-btn" onclick="event.stopPropagation(); deleteRow('${groupId}')">×</button>
-            <div class="input-unit"><label>商品名（Wタップで編集）</label>
+            
+            <div class="input-unit">
+                <label>商品名</label>
+                <div class="input-overlay" ondblclick="handleDblClick(this)" onclick="event.stopPropagation()"></div>
                 <input type="text" class="editable-input" id="input-${groupId}" 
-                value="商品名取得中..." readonly 
-                ondblclick="enableEdit(this)" onblur="disableEdit(this)">
+                value="商品名取得中..." onblur="disableEdit(this)">
             </div>
-            <div class="input-unit"><label>割引JAN（Wタップで編集）</label>
+            
+            <div class="input-unit">
+                <label>割引JAN</label>
+                <div class="input-overlay" ondblclick="handleDblClick(this)" onclick="event.stopPropagation()"></div>
                 <input type="text" class="editable-input" id="discount-${groupId}" 
-                placeholder="未設定" readonly 
-                ondblclick="enableEdit(this)" onblur="disableEdit(this)">
+                placeholder="未設定" onblur="disableEdit(this)">
             </div>
+            
             <div class="jan-display" style="font-size:10px; color:#999; text-align:right;">JAN: ${jan}</div>
         `;
         resultArea.insertBefore(groupDiv, resultArea.firstChild);
         return groupId;
     }
 
-    // 編集モードを有効化
-    function enableEdit(el) {
-        // カードが選択されていない場合は先に選択させる
-        const parent = el.closest('.product-group');
-        if (!parent.classList.contains('selected')) {
-            selectGroup(parent.id);
-        }
+    // ガード（オーバーレイ）をダブルクリックした時の処理
+    function handleDblClick(overlayEl) {
+        const input = overlayEl.nextElementSibling;
+        const parent = overlayEl.closest('.product-group');
         
-        el.readOnly = false;
-        el.classList.add('editing');
+        // 1. まずカードを選択状態にする
+        selectGroup(parent.id);
         
-        // 強制的にキーボードを表示させるためのフォーカス
+        // 2. ガードを隠して入力欄を触れるようにする
+        overlayEl.style.display = 'none';
+        
+        // 3. 強制フォーカス＆キーボード起動
         setTimeout(() => {
-            el.focus();
-            el.setSelectionRange(el.value.length, el.value.length); // カーソルを末尾に
-        }, 50);
+            input.focus();
+            const len = input.value.length;
+            input.setSelectionRange(len, len);
+        }, 10);
     }
 
-    // 編集モードを無効化
-    function disableEdit(el) {
-        el.readOnly = true;
-        el.classList.remove('editing');
+    // 入力からフォーカスが外れたらガードを復活させる
+    function disableEdit(inputEl) {
+        const overlay = inputEl.previousElementSibling;
+        if (overlay && overlay.classList.contains('input-overlay')) {
+            overlay.style.display = 'block';
+        }
     }
 
     async function fetchProductName(jan) {
@@ -227,9 +229,9 @@
     function downloadCSV() {
         let csvContent = "\uFEFF商品名,商品JAN,割引JAN\n";
         document.querySelectorAll('.product-group').forEach(group => {
-            const name = group.querySelector('.editable-input[id^="input-"]').value || "";
+            const name = group.querySelector('input[id^="input-"]').value || "";
             const jan = group.dataset.prodJan;
-            const dJan = group.querySelector('.editable-input[id^="discount-"]').value || "";
+            const dJan = group.querySelector('input[id^="discount-"]').value || "";
             csvContent += `"${name}","${jan}","${dJan}"\n`;
         });
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
