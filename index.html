@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>型番・割引 撮影スキャナー(自動抽出版)</title>
+    <title>Wスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
-    <!-- 文字認識ライブラリを追加 -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         .fixed-top { background: #fff; border-bottom: 1px solid #d1d1d6; z-index: 100; flex-shrink: 0; }
@@ -19,30 +17,26 @@
         .btn-cancel { background: #ff3b30; color: white; }
         
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; min-height: 18px; }
-        .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 10px; }
+        .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
         
-        .btn-row { display: flex; flex-direction: column; gap: 8px; }
-        .btn-main { border: none; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: bold; width: 100%; }
+        .btn-row { display: flex; gap: 8px; }
+        .btn-main { border: none; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: bold; width: 100%; }
         .btn-cap-model { background: #007aff; color: white; }
-        .btn-cap-discount { background: #34c759; color: white; }
-        .btn-next { background: #8e8e93; color: white; margin-top: 5px; }
+        .btn-scan-discount { background: #34c759; color: white; border: 2px solid #248a3d; }
+        .btn-next { background: #8e8e93; color: white; }
         .btn-main:disabled { opacity: 0.3; }
 
         .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; }
-        .product-group { background: white; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e5ea; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+        .product-group { background: white; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e5ea; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
         
         .input-unit { display: flex; flex-direction: column; gap: 4px; }
-        .input-unit label { font-size: 12px; color: #555; font-weight: bold; }
-        .model-input { width: 100%; border: 2px solid #007aff; padding: 12px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
-        .discount-input { width: 100%; border: 2px solid #34c759; padding: 12px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        .input-unit label { font-size: 11px; color: #555; font-weight: bold; }
+        .model-input { width: 100%; border: 2px solid #007aff; padding: 10px; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        .discount-input { width: 100%; border: 2px solid #34c759; padding: 10px; border-radius: 8px; font-size: 16px; background: #f9fff9; box-sizing: border-box; }
         
-        .img-container { display: flex; gap: 8px; }
-        .captured-img-box { flex: 1; text-align: center; }
-        .captured-img-box span { display: block; font-size: 10px; margin-bottom: 4px; color: #666; }
-        .captured-img { width: 100%; border-radius: 6px; border: 2px solid #eee; display: none; aspect-ratio: 1/1; object-fit: cover; }
-        
-        .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 15px; border-top: 1px solid #d1d1d6; box-sizing: border-box; }
-        .btn-download { background: #ff9500; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 16px; }
+        .captured-img { width: 100%; border-radius: 6px; border: 1px solid #ddd; display: none; margin-top: 5px; }
+        .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 15px; border-top: 1px solid #d1d1d6; }
+        .btn-download { background: #ff9500; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; }
         canvas { display: none; }
     </style>
 </head>
@@ -52,19 +46,19 @@
     <div id="status" class="status-msg">商品JANをスキャンしてください</div>
     <div id="interactive">
         <div id="confirm-overlay">
-            <div style="font-size: 16px;">JAN: <span id="scanned-jan">---</span></div>
+            <div style="font-size: 16px;">読み取り: <span id="scanned-jan">---</span></div>
             <div class="confirm-btns">
-                <button class="c-btn btn-ok" onclick="confirmJan()">OK</button>
+                <button class="c-btn btn-ok" onclick="confirmScan()">OK</button>
                 <button class="c-btn btn-cancel" onclick="resetScan()">やり直し</button>
             </div>
         </div>
     </div>
     <div class="action-area">
         <div class="btn-row">
-            <button id="cap-model-btn" class="btn-main btn-cap-model" onclick="capturePhoto('model')" disabled>📷 型番を撮影(自動解析)</button>
-            <button id="cap-discount-btn" class="btn-main btn-cap-discount" onclick="capturePhoto('discount')" disabled>📷 割引JANを撮影(自動解析)</button>
+            <button id="cap-model-btn" class="btn-main btn-cap-model" onclick="capturePhoto()" disabled>📷 型番撮影</button>
+            <button id="scan-discount-btn" class="btn-main btn-scan-discount" onclick="startDiscountScan()" disabled>🔍 割引JANスキャン</button>
         </div>
-        <button id="next-btn" class="btn-main btn-next" onclick="prepareNextScan()" disabled>次の商品へ</button>
+        <button id="next-btn" class="btn-main btn-next" onclick="prepareNextScan()" disabled>次へ</button>
     </div>
 </div>
 
@@ -76,6 +70,7 @@
     const YAHOO_APP_ID = 'dmVyPTIwMjUwNyZpZD1HYWY1RGV1Q1NWJmhhc2g9TlRJM1ltVXdZVGhtWW1WaFlXTTRaUQ'; 
 
     let isScanning = true;
+    let scanTarget = 'PRODUCT'; // 'PRODUCT' or 'DISCOUNT'
     let tempJan = null;
     let lastGroupId = null;
 
@@ -90,20 +85,34 @@
         tempJan = result.codeResult.code;
         document.getElementById('scanned-jan').innerText = tempJan;
         document.getElementById('confirm-overlay').style.display = 'flex';
+        if (window.navigator.vibrate) window.navigator.vibrate(100);
     });
 
-    async function confirmJan() {
+    async function confirmScan() {
         document.getElementById('confirm-overlay').style.display = 'none';
-        document.getElementById('cap-model-btn').disabled = false;
-        document.getElementById('cap-discount-btn').disabled = false;
-        document.getElementById('next-btn').disabled = false;
         
-        lastGroupId = createNewProductGroup(tempJan);
-        updateStatus("商品名を取得中...", "#007aff");
+        if (scanTarget === 'PRODUCT') {
+            lastGroupId = createNewProductGroup(tempJan);
+            updateStatus("商品名取得中...", "#007aff");
+            const name = await fetchProductName(tempJan);
+            document.getElementById(`input-${lastGroupId}`).value = name;
+            
+            document.getElementById('cap-model-btn').disabled = false;
+            document.getElementById('scan-discount-btn').disabled = false;
+            document.getElementById('next-btn').disabled = false;
+            updateStatus("型番撮影または割引JANスキャンへ", "#34c759");
+        } else {
+            // 割引JANスキャン結果を自動入力
+            document.getElementById(`discount-${lastGroupId}`).value = tempJan;
+            updateStatus("割引JANを入力しました", "#34c759");
+            scanTarget = 'PRODUCT'; // スキャン対象を戻す
+        }
+    }
 
-        const foundName = await fetchProductName(tempJan);
-        document.getElementById(`input-${lastGroupId}`).value = foundName;
-        updateStatus("撮影ボタンで自動入力を開始します", "#34c759");
+    function startDiscountScan() {
+        scanTarget = 'DISCOUNT';
+        isScanning = true;
+        updateStatus("割引バーコードをスキャン...", "#34c759");
     }
 
     async function fetchProductName(jan) {
@@ -123,73 +132,35 @@
         groupDiv.className = 'product-group';
         groupDiv.id = groupId;
         groupDiv.dataset.prodJan = jan;
-        
         groupDiv.innerHTML = `
-            <div class="input-unit">
-                <label style="color:#007aff;">【青】商品名・型番</label>
-                <input type="text" class="model-input" id="input-${groupId}" placeholder="撮影で自動入力">
-            </div>
-            <div class="img-container">
-                <div class="captured-img-box">
-                    <span>型番</span><img id="img-model-${groupId}" class="captured-img" style="border-color:#007aff;">
-                </div>
-                <div class="captured-img-box">
-                    <span>割引JAN</span><img id="img-discount-${groupId}" class="captured-img" style="border-color:#34c759;">
-                </div>
-            </div>
-            <div class="input-unit">
-                <label style="color:#34c759;">【緑】割引施策JAN</label>
-                <input type="text" class="discount-input" id="discount-${groupId}" placeholder="撮影で自動入力">
-            </div>
-            <div style="font-size:10px; color:#999; text-align:right;">JAN: ${jan}</div>
+            <div class="input-unit"><label>型番/商品名</label>
+            <input type="text" class="model-input" id="input-${groupId}"></div>
+            <img id="img-${groupId}" class="captured-img">
+            <div class="input-unit"><label>割引施策JAN</label>
+            <input type="text" class="discount-input" id="discount-${groupId}" placeholder="スキャンで自動入力"></div>
+            <div style="font-size:10px; color:#999; text-align:right;">商品JAN: ${jan}</div>
         `;
         resultArea.insertBefore(groupDiv, resultArea.firstChild);
         return groupId;
     }
 
-    async function capturePhoto(type) {
-        if (!lastGroupId) return;
+    function capturePhoto() {
         const video = document.querySelector('video');
         const canvas = document.getElementById('capture-canvas');
-        const img = document.getElementById(`img-${type}-${lastGroupId}`);
-        
-        canvas.width = video.videoWidth; 
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0);
-        
-        const dataUrl = canvas.toDataURL('image/png');
-        img.src = dataUrl;
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        const img = document.getElementById(`img-${lastGroupId}`);
+        img.src = canvas.toDataURL('image/png');
         img.style.display = 'block';
-
-        updateStatus("解析中...少々お待ちください", "#5856d6");
-
-        // 文字認識の実行
-        try {
-            const result = await Tesseract.recognize(dataUrl, 'eng+jpn');
-            const text = result.data.text;
-            
-            if (type === 'discount') {
-                // 数字のみを抽出して入力
-                const digits = text.replace(/[^0-9]/g, '');
-                if (digits) document.getElementById(`discount-${lastGroupId}`).value = digits;
-            } else {
-                // 型番などはそのまま入力
-                document.getElementById(`input-${lastGroupId}`).value = text.trim();
-            }
-            updateStatus("読み込み完了！(ズレは修正してください)", "#34c759");
-        } catch (e) {
-            updateStatus("読み取り失敗。手入力かコピペしてください", "#ff3b30");
-        }
     }
 
     function prepareNextScan() {
-        document.querySelectorAll('.captured-img').forEach(el => el.style.display = 'none');
+        scanTarget = 'PRODUCT';
         isScanning = true;
         document.getElementById('cap-model-btn').disabled = true;
-        document.getElementById('cap-discount-btn').disabled = true;
+        document.getElementById('scan-discount-btn').disabled = true;
         document.getElementById('next-btn').disabled = true;
-        updateStatus("次の商品JANをスキャンしてください", "#ff3b30");
+        updateStatus("次の商品JANをスキャン...", "#ff3b30");
     }
 
     function resetScan() {
