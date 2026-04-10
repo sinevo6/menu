@@ -3,157 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>商品スキャナー (iOS最前面対策版)</title>
+    <title>型番OCRスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <!-- 文字認識ライブラリ -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
-        body { 
-            font-family: -apple-system, sans-serif; 
-            margin: 0; 
-            padding: 0; 
-            background: #f2f2f7; 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column;
-        }
+        body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        .header-section { background: #fff; padding-top: env(safe-area-inset-top); border-bottom: 1px solid #d1d1d6; position: relative; }
+        #interactive { width: 100%; height: 180px; background: #000; position: relative; overflow: hidden; }
+        #interactive video { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100% !important; height: auto !important; }
         
-        /* 上部：ステータスとカメラ */
-        .header-section {
-            background: #fff;
-            padding-top: env(safe-area-inset-top);
-            border-bottom: 1px solid #d1d1d6;
-        }
+        /* 読み取りガイド枠 */
+        .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 40px; border: 2px solid #34c759; border-radius: 4px; pointer-events: none; z-index: 10; box-shadow: 0 0 0 999px rgba(0,0,0,0.3); }
 
-        #interactive { 
-            width: 100%; 
-            height: 150px; 
-            background: #000; 
-            position: relative;
-            overflow: hidden;
-        }
-        /* iOSでビデオが勝手に全画面表示されたり前面に出るのを防ぐ設定 */
-        #interactive video { 
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100% !important;
-            height: auto !important;
-        }
-
-        .status-msg { 
-            text-align: center; 
-            font-size: 14px; 
-            font-weight: bold; 
-            padding: 10px;
-            color: #ff3b30; 
-        }
-
-        /* 中間：スクロールするリスト部分 */
-        .list-container { 
-            flex: 1; 
-            overflow-y: auto; 
-            padding: 15px;
-            padding-bottom: 100px; /* 下部ボタンと被らないための余白 */
-            -webkit-overflow-scrolling: touch;
-        }
-
-        /* 下部：操作ボタンを「絶対に」最前面に固定 */
-        .bottom-controls {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 15px;
-            padding-bottom: calc(15px + env(safe-area-inset-bottom));
-            display: flex;
-            gap: 12px;
-            border-top: 1px solid #d1d1d6;
-            z-index: 9999; /* 何があっても上にくるように */
-        }
-
-        .btn { 
-            border: none; padding: 16px; border-radius: 12px; 
-            font-weight: bold; flex: 1; font-size: 16px;
-            -webkit-tap-highlight-color: transparent;
-        }
+        .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #ff3b30; }
+        .list-container { flex: 1; overflow-y: auto; padding: 15px; padding-bottom: 120px; }
+        .bottom-controls { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.95); padding: 15px; display: flex; gap: 10px; border-top: 1px solid #d1d1d6; z-index: 9999; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+        
+        .btn { border: none; padding: 16px; border-radius: 12px; font-weight: bold; flex: 1; font-size: 16px; }
+        .btn-ocr { background: #5856d6; color: white; margin-top: 8px; padding: 10px; width: 100%; font-size: 14px; }
         .btn-next { background: #007aff; color: white; }
         .btn-download { background: #34c759; color: white; }
-        .btn-next:disabled { background: #d1d1d6; color: #8e8e93; }
+        .btn-next:disabled { background: #d1d1d6; }
 
-        /* リストの見た目 */
-        .product-group { 
-            background: white; border-radius: 12px; margin-bottom: 15px; 
-            border: 1px solid #e5e5ea; overflow: hidden;
-        }
-        .product-header { padding: 12px; border-bottom: 1px solid #e5e5ea; }
-        .model-input { 
-            width: 100%; border: 1px solid #007aff; padding: 12px; 
-            border-radius: 8px; box-sizing: border-box; font-size: 16px;
-        }
-        .jan-label { font-size: 11px; color: #8e8e93; display: block; margin-top: 6px; }
-        .discount-item { padding: 10px 12px; background: #fafafa; border-bottom: 1px solid #eee; }
-        .discount-name-input { width: 100%; border: 1px solid #c7c7cc; padding: 10px; border-radius: 6px; font-size: 14px; }
+        .product-group { background: white; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e5e5ea; padding: 12px; }
+        .model-input { width: 100%; border: 2px solid #007aff; padding: 12px; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        .jan-label { font-size: 11px; color: #8e8e93; display: block; margin-top: 5px; }
     </style>
 </head>
 <body>
 
     <div class="header-section">
-        <div id="status" class="status-msg">スキャン待機中</div>
-        <div id="interactive"></div>
+        <div id="status" class="status-msg">①JANをスキャン ②型番を枠に入れ[文字認識]</div>
+        <div id="interactive">
+            <div class="scan-guide"></div>
+        </div>
     </div>
 
-    <div id="result-area" class="list-container">
-        <!-- スキャン結果がここに入ります -->
-    </div>
+    <div id="result-area" class="list-container"></div>
 
     <div class="bottom-controls">
         <button id="next-btn" class="btn btn-next" onclick="prepareNextScan()" disabled>次へ (確定)</button>
         <button class="btn btn-download" onclick="downloadCSV()">CSV保存</button>
     </div>
 
+    <canvas id="ocr-canvas" style="display:none;"></canvas>
+
     <script>
         let isWaitingForNext = false; 
         let lastProductGroupId = null;
 
         Quagga.init({
-            inputStream: { 
-                name: "Live", type: "LiveStream", 
-                target: document.querySelector('#interactive'), 
-                constraints: { facingMode: "environment" } 
-            },
+            inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment" } },
             decoder: { readers: ["ean_reader"] }
-        }, (err) => { 
-            if (err) { document.getElementById('status').innerText = "カメラエラー"; return; }
-            Quagga.start(); 
-        });
+        }, (err) => { if (!err) Quagga.start(); });
 
         Quagga.onDetected((result) => {
             if (isWaitingForNext) return; 
             const code = result.codeResult.code;
             isWaitingForNext = true;
-            
             document.getElementById('next-btn').disabled = false;
-            const status = document.getElementById('status');
-            status.innerText = "読み取り完了！確定してください";
-            status.style.color = "#34c759";
+            updateStatus("読込成功！必要なら文字認識へ", "#34c759");
 
             if (!lastProductGroupId || code.startsWith('45') || code.startsWith('49')) {
                 createNewProductGroup(code);
-            } else {
-                addDiscountToLastProduct(code);
             }
             if (window.navigator.vibrate) window.navigator.vibrate(100);
         });
-
-        function prepareNextScan() {
-            isWaitingForNext = false;
-            document.getElementById('next-btn').disabled = true;
-            const status = document.getElementById('status');
-            status.innerText = "スキャン待機中";
-            status.style.color = "#ff3b30";
-        }
 
         function createNewProductGroup(jan) {
             const resultArea = document.getElementById('result-area');
@@ -163,50 +79,66 @@
             groupDiv.className = 'product-group';
             groupDiv.id = groupId;
             groupDiv.dataset.prodJan = jan;
+            
             groupDiv.innerHTML = `
-                <div class="product-header">
-                    <input type="text" class="model-input" placeholder="商品名/型番を入力">
-                    <span class="jan-label">商品 JAN: ${jan}</span>
-                </div>
-                <div class="discount-list" id="discounts-${groupId}"></div>
+                <input type="text" class="model-input" id="input-${groupId}" placeholder="型番/商品名">
+                <button class="btn btn-ocr" onclick="runOCR('${groupId}')">📷 型番をカメラで読み取る</button>
+                <span class="jan-label">JAN: ${jan}</span>
             `;
             resultArea.insertBefore(groupDiv, resultArea.firstChild);
         }
 
-        function addDiscountToLastProduct(jan) {
-            if (!lastProductGroupId) return;
-            const discountList = document.getElementById(`discounts-${lastProductGroupId}`);
-            const item = document.createElement('div');
-            item.className = 'discount-item';
-            item.dataset.discountJan = jan;
-            item.innerHTML = `
-                <span class="jan-label">割引JAN: ${jan}</span>
-                <input type="text" class="discount-name-input" placeholder="施策名を入力">
-            `;
-            discountList.appendChild(item);
+        // --- 文字認識(OCR)処理 ---
+        async function runOCR(groupId) {
+            const status = document.getElementById('status');
+            updateStatus("文字解析中...", "#5856d6");
+            
+            const video = document.querySelector('video');
+            const canvas = document.getElementById('ocr-canvas');
+            const context = canvas.getContext('2d');
+
+            // 現在のカメラ映像をキャプチャ（ガイド枠付近を切り抜き）
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Tesseractで解析
+            try {
+                const result = await Tesseract.recognize(canvas, 'eng+jpn');
+                const text = result.data.text.trim();
+                if (text) {
+                    document.getElementById(`input-${groupId}`).value = text.replace(/\n/g, " ");
+                    updateStatus("読み取り完了！", "#34c759");
+                } else {
+                    updateStatus("文字が見つかりませんでした", "#ff3b30");
+                }
+            } catch (e) {
+                updateStatus("OCRエラー", "#ff3b30");
+            }
+        }
+
+        function prepareNextScan() {
+            isWaitingForNext = false;
+            document.getElementById('next-btn').disabled = true;
+            updateStatus("次のバーコードをスキャン", "#ff3b30");
+        }
+
+        function updateStatus(text, color) {
+            const s = document.getElementById('status');
+            s.innerText = text; s.style.color = color;
         }
 
         function downloadCSV() {
-            let csvContent = "\uFEFF商品型番,商品JAN,割引JAN,割引名称\n";
-            const groups = document.querySelectorAll('.product-group');
-            groups.forEach(group => {
-                const prodModel = group.querySelector('.model-input').value || "未入力";
-                const prodJan = group.dataset.prodJan;
-                const discounts = group.querySelectorAll('.discount-item');
-                if (discounts.length === 0) {
-                    csvContent += `"${prodModel}","${prodJan}","",""\n`;
-                } else {
-                    discounts.forEach(d => {
-                        const dJan = d.dataset.discountJan;
-                        const dName = d.querySelector('.discount-name-input').value || "";
-                        csvContent += `"${prodModel}","${prodJan}","${dJan}","${dName}"\n`;
-                    });
-                }
+            let csvContent = "\uFEFF商品型番,商品JAN\n";
+            document.querySelectorAll('.product-group').forEach(group => {
+                const model = group.querySelector('.model-input').value || "未入力";
+                const jan = group.dataset.prodJan;
+                csvContent += `"${model}","${jan}"\n`;
             });
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `scan_${new Date().getTime()}.csv`;
+            link.download = `scan_${Date.now()}.csv`;
             link.click();
         }
     </script>
