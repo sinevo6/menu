@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>余白活用版 Wスキャナー</title>
+    <title>役割分離版 Wスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -23,7 +23,7 @@
         .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #8e8e93; }
         .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
         .btn-row { display: flex; gap: 8px; }
-        .btn-main { border: none; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .btn-main { border: none; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; }
         .btn-next { background: #8e8e93; color: white; }
         .btn-scan-prod { background: #007aff; color: white; }
         .btn-scan-discount { background: #34c759; color: white; }
@@ -33,23 +33,19 @@
             background: white; border-radius: 12px; margin-bottom: 12px; 
             border: 2px solid transparent; padding: 15px; position: relative; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            /* 右側に「カード選択用」の広い余白を確保するためのpadding */
-            padding-right: 80px; 
-            min-height: 100px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            min-height: 110px; display: flex; flex-direction: column; justify-content: center;
         }
+        /* 選択時のみ青枠 */
         .product-group.selected { border-color: #007aff; background-color: #f0f7ff; }
         .selected-badge { display: none; position: absolute; top: -10px; left: 10px; background: #007aff; color: white; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
         .product-group.selected .selected-badge { display: block; }
 
-        .del-btn { position: absolute; top: 10px; right: 10px; background: #ff3b30; color: white; border: none; width: 28px; height: 28px; border-radius: 14px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 10; }
+        .del-btn { position: absolute; top: 10px; right: 10px; background: #ff3b30; color: white; border: none; width: 32px; height: 32px; border-radius: 16px; font-size: 18px; font-weight: bold; z-index: 10; }
         
-        .input-unit { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; width: 85%; }
+        /* 入力エリア（幅60%） */
+        .input-unit { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; width: 60%; position: relative; }
         .input-unit label { font-size: 11px; color: #8e8e93; font-weight: bold; }
         
-        /* テキストフィールドの幅を制限 */
         .editable-input { 
             width: 100%; border: 1px solid #d1d1d6; padding: 10px; 
             border-radius: 8px; font-size: 16px; box-sizing: border-box; 
@@ -57,15 +53,15 @@
         }
         .editable-input:focus { border-color: #007aff; outline: none; }
 
-        /* カード選択用のガイド表示（任意） */
-        .tap-zone-hint {
-            position: absolute; right: 0; top: 0; bottom: 0; width: 70px;
-            display: flex; align-items: center; justify-content: center;
-            color: #d1d1d6; font-size: 10px; pointer-events: none;
-            border-left: 1px dashed #eee;
+        /* 明示的な「選択ボタン」 */
+        .select-trigger-btn {
+            position: absolute; right: 10px; bottom: 15px; width: 30%; height: 44px;
+            background: #e5e5ea; color: #000; border: none; border-radius: 8px;
+            font-size: 13px; font-weight: bold; cursor: pointer;
         }
+        .product-group.selected .select-trigger-btn { background: #007aff; color: #fff; }
         
-        .jan-display { font-size: 10px; color: #999; }
+        .jan-display { font-size: 11px; color: #8e8e93; margin-top: 4px; }
         
         .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 12px; border-top: 1px solid #d1d1d6; z-index: 500; }
         .btn-download { background: #ff9500; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 16px; }
@@ -74,7 +70,7 @@
 <body>
 
 <div class="fixed-top">
-    <div id="status" class="status-msg">右側の余白タップでカード選択</div>
+    <div id="status" class="status-msg">入力を触ると編集・右下ボタンでスキャン対象選択</div>
     <div id="interactive">
         <div class="scan-guide" id="guide"></div>
         <div id="scan-popup">
@@ -89,7 +85,7 @@
         </div>
     </div>
     <div class="action-area">
-        <button id="next-btn" class="btn-main btn-next" onclick="prepareNext()">＋ 次の商品を追加</button>
+        <button id="next-btn" class="btn-main btn-next" onclick="prepareNext()">＋ 新規商品を追加</button>
         <div class="btn-row">
             <button id="scan-prod-btn" class="btn-main btn-scan-prod" onclick="startProductScan()">🔍 商品スキャン</button>
             <button id="scan-discount-btn" class="btn-main btn-scan-discount" onclick="startDiscountScan()" disabled>🏷️ 割引スキャン</button>
@@ -129,7 +125,7 @@
         document.getElementById('scan-popup').style.display = 'flex';
     });
 
-    function prepareNext() { deselectAll(); startProductScan(); updateStatus("新規商品スキャン...", "#007aff"); }
+    function prepareNext() { deselectAll(); startProductScan(); updateStatus("新規追加モード", "#007aff"); }
     function startProductScan() { scanTarget = 'PRODUCT'; isScanning = true; lastCodes = []; document.getElementById('scan-popup').style.display = 'none'; document.getElementById('guide').style.borderColor = "#007aff"; }
     function startDiscountScan() { if (!selectedGroupId) return; scanTarget = 'DISCOUNT'; isScanning = true; lastCodes = []; document.getElementById('scan-popup').style.display = 'none'; document.getElementById('guide').style.borderColor = "#34c759"; }
 
@@ -166,21 +162,24 @@
         groupDiv.id = groupId;
         groupDiv.dataset.prodJan = jan;
         
-        // カード全体のどこを触っても選択
-        groupDiv.onclick = () => selectGroup(groupId);
-        
+        // 自動選択機能付き入力欄 ＆ 明示的な選択ボタン
         groupDiv.innerHTML = `
             <div class="selected-badge">選択中</div>
-            <div class="tap-zone-hint">SELECT</div>
-            <button class="del-btn" onclick="event.stopPropagation(); deleteRow('${groupId}')">×</button>
+            <button class="del-btn" onclick="deleteRow('${groupId}')">×</button>
+            
             <div class="input-unit">
                 <label>商品名</label>
-                <input type="text" class="editable-input" id="input-${groupId}" value="取得中..." onclick="event.stopPropagation()">
+                <input type="text" class="editable-input" id="input-${groupId}" value="取得中..." 
+                    onfocus="selectGroup('${groupId}')">
             </div>
+            
             <div class="input-unit">
                 <label>割引JAN</label>
-                <input type="text" class="editable-input" id="discount-${groupId}" placeholder="未設定" onclick="event.stopPropagation()">
+                <input type="text" class="editable-input" id="discount-${groupId}" placeholder="未設定" 
+                    onfocus="selectGroup('${groupId}')">
             </div>
+            
+            <button class="select-trigger-btn" onclick="selectGroup('${groupId}')">スキャン対象<br>に設定</button>
             <div class="jan-display">JAN: ${jan}</div>
         `;
         resultArea.insertBefore(groupDiv, resultArea.firstChild);
