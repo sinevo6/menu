@@ -3,37 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PC・割引CSVスキャナー</title>
+    <title>商品・割引CSVスキャナー</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 0; padding: 15px; background: #f8f9fa; padding-bottom: 80px; }
         #interactive { width: 100%; height: 180px; border: 3px solid #333; border-radius: 8px; background: #000; }
-        .controls { margin: 15px 0; text-align: center; }
-        .btn-download { background: #28a745; color: white; border: none; padding: 12px 20px; border-radius: 25px; font-weight: bold; font-size: 16px; cursor: pointer; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .controls { margin: 15px 0; display: flex; gap: 10px; }
+        .btn { border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn-next { background: #007bff; color: white; }
+        .btn-download { background: #28a745; color: white; }
+        .btn-next:disabled { background: #ccc; }
         
         .list-container { margin-top: 15px; }
-        .pc-group { background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .pc-header { background: #e9ecef; padding: 10px; font-weight: bold; border-bottom: 1px solid #ddd; }
+        .product-group { background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .product-header { background: #e9ecef; padding: 10px; font-weight: bold; border-bottom: 1px solid #ddd; }
         .discount-item { padding: 8px 15px; border-bottom: 1px solid #eee; font-size: 13px; color: #555; }
         .jan-label { font-size: 11px; color: #888; display: block; }
         .model-name { color: #007bff; display: block; margin-bottom: 4px; }
-        .name-input { width: 100%; border: 1px solid #ccc; padding: 5px; border-radius: 4px; box-sizing: border-box; }
+        .name-input { width: 100%; border: 1px solid #ccc; padding: 5px; border-radius: 4px; box-sizing: border-box; margin-top: 4px; }
+        .status-msg { text-align: center; font-size: 14px; color: #d9534f; margin-bottom: 5px; font-weight: bold; }
     </style>
 </head>
 <body>
 
+    <div id="status" class="status-msg">スキャンしてください</div>
     <div id="interactive"></div>
     
     <div class="controls">
-        <button class="btn-download" onclick="downloadCSV()">CSVで保存・書き出し</button>
+        <button id="next-btn" class="btn btn-next" onclick="prepareNextScan()" disabled>次へ (商品を確定)</button>
+        <button class="btn btn-download" onclick="downloadCSV()">CSV保存</button>
     </div>
 
-    <div id="result-area" class="list-container">
-        </div>
+    <div id="result-area" class="list-container"></div>
 
     <script>
-        let isScanning = false;
-        let lastPcGroupId = null;
+        let isWaitingForNext = false; // 「次へ」待ち状態
+        let lastProductGroupId = null;
 
         Quagga.init({
             inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment" } },
@@ -41,36 +46,46 @@
         }, (err) => { if (!err) Quagga.start(); });
 
         Quagga.onDetected((result) => {
-            const code = result.codeResult.code;
-            if (isScanning) return;
-            isScanning = true;
+            if (isWaitingForNext) return; // 「次へ」を押すまで反応しない
 
-            // PCか割引かの簡易判定（45/49始まりをPCとする）
-            if (code.startsWith('45') || code.startsWith('49')) {
-                createNewPcGroup(code);
+            const code = result.codeResult.code;
+            isWaitingForNext = true;
+            document.getElementById('next-btn').disabled = false;
+            document.getElementById('status').innerText = "スキャン完了！「次へ」を押してください";
+            document.getElementById('status').style.color = "#28a745";
+
+            // 45/49始まり、または最初の1件目は商品として扱う
+            if (code.startsWith('45') || code.startsWith('49') || !lastProductGroupId) {
+                createNewProductGroup(code);
             } else {
-                addDiscountToLastPc(code);
+                addDiscountToLastProduct(code);
             }
 
             if (window.navigator.vibrate) window.navigator.vibrate(100);
-            setTimeout(() => { isScanning = false; }, 2000);
         });
 
-        function createNewPcGroup(jan) {
+        // 「次へ」ボタンの処理
+        function prepareNextScan() {
+            isWaitingForNext = false;
+            document.getElementById('next-btn').disabled = true;
+            document.getElementById('status').innerText = "スキャンしてください";
+            document.getElementById('status').style.color = "#d9534f";
+        }
+
+        function createNewProductGroup(jan) {
             const resultArea = document.getElementById('result-area');
-            const groupId = 'pc-' + Date.now();
-            lastPcGroupId = groupId;
+            const groupId = 'prod-' + Date.now();
+            lastProductGroupId = groupId;
 
             const groupDiv = document.createElement('div');
-            groupDiv.className = 'pc-group';
+            groupDiv.className = 'product-group';
             groupDiv.id = groupId;
-            // データ属性にJANと初期型番を保持
-            groupDiv.dataset.pcJan = jan;
+            groupDiv.dataset.prodJan = jan;
             
             groupDiv.innerHTML = `
-                <div class="pc-header">
+                <div class="product-header">
                     <span class="model-name" id="name-${groupId}">検索中...</span>
-                    <span class="jan-label">PC JAN: ${jan}</span>
+                    <span class="jan-label">商品 JAN: ${jan}</span>
                 </div>
                 <div class="discount-list" id="discounts-${groupId}"></div>
             `;
@@ -78,9 +93,9 @@
             fetchModelName(jan, `name-${groupId}`, groupDiv);
         }
 
-        function addDiscountToLastPc(jan) {
-            if (!lastPcGroupId) return;
-            const discountList = document.getElementById(`discounts-${lastPcGroupId}`);
+        function addDiscountToLastProduct(jan) {
+            if (!lastProductGroupId) return;
+            const discountList = document.getElementById(`discounts-${lastProductGroupId}`);
             const item = document.createElement('div');
             item.className = 'discount-item';
             item.dataset.discountJan = jan;
@@ -92,47 +107,40 @@
         }
 
         async function fetchModelName(jan, elementId, groupDiv) {
-            // ここにYahoo API等を入れる。今は擬似的に1秒後反映。
+            // 擬似的な型番取得
             setTimeout(() => {
-                const modelName = "PC型番: ABC-" + jan.substring(8); 
+                const modelName = "商品型番: " + jan.substring(0, 4) + "-" + jan.substring(9); 
                 document.getElementById(elementId).innerText = modelName;
-                groupDiv.dataset.pcModel = modelName; // CSV用に保存
-            }, 800);
+                groupDiv.dataset.prodModel = modelName;
+            }, 500);
         }
 
-        // CSV書き出し機能
         function downloadCSV() {
-            let csvContent = "\uFEFF"; // 文字化け防止(BOM)
-            csvContent += "PC型番,PC JAN,割引JAN,割引名称\n";
+            let csvContent = "\uFEFF"; // BOM
+            csvContent += "商品型番,商品JAN,割引JAN,割引名称\n";
 
-            const groups = document.querySelectorAll('.pc-group');
+            const groups = document.querySelectorAll('.product-group');
             groups.forEach(group => {
-                const pcModel = group.dataset.pcModel || "検索中...";
-                const pcJan = group.dataset.pcJan;
+                const prodModel = group.dataset.prodModel || "不明";
+                const prodJan = group.dataset.prodJan;
                 const discounts = group.querySelectorAll('.discount-item');
 
                 if (discounts.length === 0) {
-                    // 割引がない場合
-                    csvContent += `"${pcModel}","${pcJan}","",""\n`;
+                    csvContent += `"${prodModel}","${prodJan}","",""\n`;
                 } else {
-                    // 割引がある場合、割引ごとに1行作成
                     discounts.forEach(d => {
                         const dJan = d.dataset.discountJan;
                         const dName = d.querySelector('.discount-name').value;
-                        csvContent += `"${pcModel}","${pcJan}","${dJan}","${dName}"\n`;
+                        csvContent += `"${prodModel}","${prodJan}","${dJan}","${dName}"\n`;
                     });
                 }
             });
 
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `scan_list_${new Date().getTime()}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
+            link.href = URL.createObjectURL(blob);
+            link.download = `scan_list_${new Date().getTime()}.csv`;
             link.click();
-            document.body.removeChild(link);
         }
     </script>
 </body>
