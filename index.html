@@ -2,216 +2,233 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>役割分離版 Wスキャナー</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作業管理 - 検索自動展開版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background: #f2f2f7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        .fixed-top { background: #fff; border-bottom: 1px solid #d1d1d6; z-index: 1000; flex-shrink: 0; }
-        #interactive { width: 100%; height: 160px; background: #000; position: relative; overflow: hidden; }
-        #interactive video { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100% !important; height: auto !important; }
-        .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 50px; border: 3px solid #8e8e93; box-shadow: 0 0 0 1000px rgba(0,0,0,0.5); pointer-events: none; z-index: 5; }
+        .whitespace-pre-wrap { white-space: pre-wrap; word-break: break-all; }
+        .hidden-row { display: none; }
+        mark { background-color: #fef08a; color: #1e293b; padding: 0 1px; }
 
-        #scan-popup { 
-            position: absolute; bottom: 10px; left: 10px; right: 10px; 
-            background: rgba(255, 255, 255, 0.98); border-radius: 12px; 
-            padding: 12px; display: none; flex-direction: row; 
-            align-items: center; justify-content: space-between; 
-            z-index: 2000; box-shadow: 0 8px 20px rgba(0,0,0,0.4); border: 2px solid #007aff;
+        /* --- テーブル全体の幅固定（合計 550px） --- */
+        #mainTable { 
+            table-layout: fixed !important; 
+            width: 550px !important; 
+            border-collapse: collapse;
         }
-        
-        .status-msg { text-align: center; font-size: 13px; font-weight: bold; padding: 8px; color: #8e8e93; }
-        .action-area { padding: 10px; background: #fff; border-bottom: 1px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; }
-        .btn-row { display: flex; gap: 8px; }
-        .btn-main { border: none; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; }
-        .btn-next { background: #8e8e93; color: white; }
-        .btn-scan-prod { background: #007aff; color: white; }
-        .btn-scan-discount { background: #34c759; color: white; }
 
-        .list-container { flex: 1; overflow-y: auto; padding: 10px; padding-bottom: 100px; }
-        .product-group { 
-            background: white; border-radius: 12px; margin-bottom: 12px; 
-            border: 2px solid transparent; padding: 15px; position: relative; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            min-height: 110px; display: flex; flex-direction: column; justify-content: center;
-        }
-        /* 選択時のみ青枠 */
-        .product-group.selected { border-color: #007aff; background-color: #f0f7ff; }
-        .selected-badge { display: none; position: absolute; top: -10px; left: 10px; background: #007aff; color: white; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
-        .product-group.selected .selected-badge { display: block; }
+        /* 1. 左端：矢印（25px） */
+        .col-arrow { width: 15px !important; text-align: center; color: #94a3b8; }
+        /* 2. 作業コード（60px） */
+        .col-work-code { width: 30px !important; text-align: center; font-family: monospace; }
+        /* 3. メニュー名（150px） */
+        .col-menu { width: 180px !important; }
+        /* 4. 作業内容（メイン 280px） */
+        .col-default { width: 280px !important; }
+        /* 5. 金額（75px） */
+        .col-price { width: 40px !important; text-align: right; }
+        th.col-price { text-align: center !important; }
+        /* 6. 右端：チェックボックス（30px） */
+        .col-check { width: 30px !important; text-align: center; }
 
-        .del-btn { position: absolute; top: 10px; right: 10px; background: #ff3b30; color: white; border: none; width: 32px; height: 32px; border-radius: 16px; font-size: 18px; font-weight: bold; z-index: 10; }
-        
-        /* 入力エリア（幅60%） */
-        .input-unit { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; width: 60%; position: relative; }
-        .input-unit label { font-size: 11px; color: #8e8e93; font-weight: bold; }
-        
-        .editable-input { 
-            width: 100%; border: 1px solid #d1d1d6; padding: 10px; 
-            border-radius: 8px; font-size: 16px; box-sizing: border-box; 
-            background: #fff;
+        th, td { 
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
+            padding: 6px 4px !important; border: 1px solid #e2e8f0; font-size: 12px !important;
         }
-        .editable-input:focus { border-color: #007aff; outline: none; }
+        th { background-color: #1e293b; color: white; }
 
-        /* 明示的な「選択ボタン」 */
-        .select-trigger-btn {
-            position: absolute; right: 10px; bottom: 15px; width: 30%; height: 44px;
-            background: #e5e5ea; color: #000; border: none; border-radius: 8px;
-            font-size: 13px; font-weight: bold; cursor: pointer;
+        /* 合計表示エリア  */
+        #totalBar {
+            position: sticky; top: 0; z-index: 50;
+            background: #fff; border: 2px solid #6366f1;
+            width: 550px;
         }
-        .product-group.selected .select-trigger-btn { background: #007aff; color: #fff; }
-        
-        .jan-display { font-size: 11px; color: #8e8e93; margin-top: 4px; }
-        
-        .footer-save { position: fixed; bottom: 0; width: 100%; background: white; padding: 12px; border-top: 1px solid #d1d1d6; z-index: 500; }
-        .btn-download { background: #ff9500; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 16px; }
     </style>
 </head>
-<body>
+<body class="bg-gray-100 p-4">
 
-<div class="fixed-top">
-    <div id="status" class="status-msg">入力を触ると編集・右下ボタンでスキャン対象選択</div>
-    <div id="interactive">
-        <div class="scan-guide" id="guide"></div>
-        <div id="scan-popup">
-            <div>
-                <div style="font-size: 10px; color: #666;" id="mode-text">---</div>
-                <div style="font-size: 18px; font-weight: bold;" id="scanned-jan">---</div>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <button onclick="resetScan()" style="background:#eee; border:none; padding:8px 12px; border-radius:8px;">リトライ</button>
-                <button onclick="confirmScan()" id="pop-ok-btn" style="background:#007aff; color:white; border:none; padding:8px 20px; border-radius:8px; font-weight:bold;">確定</button>
-            </div>
+    <div class="max-w-6xl">
+        <div id="totalBar" class="mb-3 p-3 rounded-lg shadow-md flex justify-between items-center">
+            <div class="text-sm font-bold text-slate-600">選択中の合計:</div>
+            <div class="text-xl font-black text-indigo-600">¥ <span id="totalAmount">0</span></div>
+        </div>
+
+        <div class="mb-3 flex items-center gap-2" style="width: 550px;">
+            <input type="text" id="searchInput" placeholder="検索..." 
+                class="flex-grow p-2 border border-slate-300 rounded text-sm focus:outline-none">
+            <button onclick="toggleAllRows()" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-bold">
+                全展開
+            </button>
+        </div>
+
+        <div class="bg-white shadow-sm overflow-hidden hidden inline-block" id="tableContainer">
+            <table id="mainTable">
+                <thead><tr id="tableHeader"></tr></thead>
+                <tbody id="tbody" class="text-slate-700"></tbody>
+            </table>
         </div>
     </div>
-    <div class="action-area">
-        <button id="next-btn" class="btn-main btn-next" onclick="prepareNext()">＋ 新規商品を追加</button>
-        <div class="btn-row">
-            <button id="scan-prod-btn" class="btn-main btn-scan-prod" onclick="startProductScan()">🔍 商品スキャン</button>
-            <button id="scan-discount-btn" class="btn-main btn-scan-discount" onclick="startDiscountScan()" disabled>🏷️ 割引スキャン</button>
-        </div>
-    </div>
-</div>
 
-<div id="result-area" class="list-container"></div>
-<div class="footer-save"><button class="btn-download" onclick="downloadCSV()">CSVを保存する</button></div>
+    <script>
+        const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRguVx6K4z5w1QNwtfIwbY_f6Ikaqwawj7MmsWCWxNmJG7ugKAnvmrluW2Oxoz5FfiLvKSWRvJ23GXN/pub?output=csv';
+        const detailColumnNames = ["作業内容", "補足事項", "関連メニュー"];
+        let allData = []; let mapping = { main: [], detail: [] }; let isAllOpen = false;
 
-<script>
-    const YAHOO_APP_ID = 'dmVyPTIwMjUwNyZpZD1HYWY1RGV1Q1NWJmhhc2g9TlRJM1ltVXdZVGhtWW1WaFlXTTRaUQ'; 
-    let isScanning = false;
-    let scanTarget = 'PRODUCT'; 
-    let tempJan = null;
-    let selectedGroupId = null;
-    let lastCodes = [];
-    const REQUIRED_CONFIRMATIONS = 3;
-
-    Quagga.init({
-        inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#interactive'), constraints: { facingMode: "environment", focusMode: "continuous" } },
-        decoder: { readers: ["ean_reader"] },
-        locate: true
-    }, (err) => { if (!err) Quagga.start(); });
-
-    Quagga.onDetected((result) => {
-        if (!isScanning) return;
-        const code = result.codeResult.code;
-        if (!code || code.length !== 13) return;
-        lastCodes.push(code);
-        if (lastCodes.length < REQUIRED_CONFIRMATIONS) return;
-        if (!lastCodes.every(c => c === lastCodes[0])) { lastCodes.shift(); return; }
-        isScanning = false; lastCodes = []; tempJan = code;
-        document.getElementById('guide').style.borderColor = "#34c759";
-        document.getElementById('scanned-jan').innerText = tempJan;
-        document.getElementById('mode-text').innerText = (scanTarget === 'PRODUCT') ? "商品JAN(修正)" : "割引JAN";
-        document.getElementById('scan-popup').style.display = 'flex';
-    });
-
-    function prepareNext() { deselectAll(); startProductScan(); updateStatus("新規追加モード", "#007aff"); }
-    function startProductScan() { scanTarget = 'PRODUCT'; isScanning = true; lastCodes = []; document.getElementById('scan-popup').style.display = 'none'; document.getElementById('guide').style.borderColor = "#007aff"; }
-    function startDiscountScan() { if (!selectedGroupId) return; scanTarget = 'DISCOUNT'; isScanning = true; lastCodes = []; document.getElementById('scan-popup').style.display = 'none'; document.getElementById('guide').style.borderColor = "#34c759"; }
-
-    async function confirmScan() {
-        document.getElementById('scan-popup').style.display = 'none';
-        document.getElementById('guide').style.borderColor = "#8e8e93";
-        if (scanTarget === 'PRODUCT') {
-            let targetId = selectedGroupId;
-            if (!targetId) { targetId = createNewProductGroup(tempJan); selectGroup(targetId); }
-            else { const card = document.getElementById(targetId); card.dataset.prodJan = tempJan; card.querySelector('.jan-display').innerText = `JAN: ${tempJan}`; }
-            const name = await fetchProductName(tempJan);
-            document.getElementById(`input-${targetId}`).value = name;
-        } else {
-            document.getElementById(`discount-${selectedGroupId}`).value = tempJan;
+        async function init() {
+            try {
+                const res = await fetch(csvUrl);
+                const text = await res.text();
+                allData = parseCSV(text);
+                buildHeader(allData[0]);
+                render(allData.slice(1));
+                document.getElementById('searchInput').addEventListener('input', e => render(allData.slice(1), e.target.value));
+            } catch (e) { console.error(e); }
         }
-    }
 
-    function selectGroup(id) {
-        deselectAll();
-        const target = document.getElementById(id);
-        if (target) { target.classList.add('selected'); selectedGroupId = id; document.getElementById('scan-discount-btn').disabled = false; }
-    }
+        function parseCSV(s) {
+            const arr = []; let q = false, r = [''], c = 0;
+            for (let i = 0; i < s.length; i++) {
+                const char = s[i], next = s[i+1];
+                if (char === '"') { if (q && next === '"') { r[c] += '"'; i++; } else { q = !q; } }
+                else if (char === ',' && !q) { r[++c] = ''; }
+                else if (char === '\n' && !q) { arr.push(r); r = ['']; c = 0; }
+                else if (char === '\r' && !q) continue;
+                else r[c] += char;
+            }
+            if (r.length > 1 || r[0] !== '') arr.push(r);
+            return arr;
+        }
 
-    function deselectAll() {
-        document.querySelectorAll('.product-group').forEach(el => el.classList.remove('selected'));
-        selectedGroupId = null; document.getElementById('scan-discount-btn').disabled = true;
-    }
+        function buildHeader(head) {
+            const hEl = document.getElementById('tableHeader');
+            hEl.innerHTML = '<th class="col-arrow"></th>';
 
-    function createNewProductGroup(jan) {
-        const resultArea = document.getElementById('result-area');
-        const groupId = 'prod-' + Date.now();
-        const groupDiv = document.createElement('div');
-        groupDiv.className = 'product-group';
-        groupDiv.id = groupId;
-        groupDiv.dataset.prodJan = jan;
-        
-        // 自動選択機能付き入力欄 ＆ 明示的な選択ボタン
-        groupDiv.innerHTML = `
-            <div class="selected-badge">選択中</div>
-            <button class="del-btn" onclick="deleteRow('${groupId}')">×</button>
+            head.forEach((t, i) => {
+                const txt = t.trim();
+                if (txt.toUpperCase().includes("JAN")) return;
+                let cls = "col-default";
+                if (i === 0) cls = "col-work-code";
+                else if (txt.includes("金額")) cls = "col-price";
+                else if (txt.includes("メニュー")) cls = "col-menu";
+                
+                const conf = { i, label: txt, cls };
+                if (detailColumnNames.some(d => txt.includes(d))) {
+                    mapping.detail.push(conf);
+                } else {
+                    mapping.main.push(conf);
+                    const th = document.createElement('th');
+                    th.className = cls;
+                    th.textContent = txt;
+                    hEl.appendChild(th);
+                }
+            });
+            hEl.innerHTML += '<th class="col-check"><input type="checkbox" id="masterCheck" onclick="toggleAllChecks(this.checked)"></th>';
+        }
+
+        function render(rows, s = "") {
+            const b = document.getElementById('tbody');
+            b.innerHTML = "";
+            const qs = s.trim().split(/\s+/).filter(q => q !== "");
             
-            <div class="input-unit">
-                <label>商品名</label>
-                <input type="text" class="editable-input" id="input-${groupId}" value="取得中..." 
-                    onfocus="selectGroup('${groupId}')">
-            </div>
-            
-            <div class="input-unit">
-                <label>割引JAN</label>
-                <input type="text" class="editable-input" id="discount-${groupId}" placeholder="未設定" 
-                    onfocus="selectGroup('${groupId}')">
-            </div>
-            
-            <button class="select-trigger-btn" onclick="selectGroup('${groupId}')">スキャン対象<br>に設定</button>
-            <div class="jan-display">JAN: ${jan}</div>
-        `;
-        resultArea.insertBefore(groupDiv, resultArea.firstChild);
-        return groupId;
-    }
+            rows.forEach((row, rIdx) => {
+                if (row.join('').trim() === "") return;
+                
+                // 検索一致判定
+                const match = qs.length === 0 || qs.some(q => row.some(cell => cell.toLowerCase().includes(q.toLowerCase())));
+                if (!match) return;
 
-    async function fetchProductName(jan) {
-        try {
-            const proxy = "https://corsproxy.io/?";
-            const targetUrl = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${YAHOO_APP_ID}&jan_code=${jan}&results=1`;
-            const response = await fetch(proxy + encodeURIComponent(targetUrl));
-            const data = await response.json();
-            return (data.hits && data.hits.length > 0) ? data.hits[0].name : "商品名なし";
-        } catch (e) { return "通信エラー"; }
-    }
+                // 詳細エリアに検索ワードが含まれているか判定
+                const detailMatch = qs.length > 0 && mapping.detail.some(c => {
+                    const cellValue = (row[c.i] || "").toLowerCase();
+                    return qs.some(q => cellValue.includes(q.toLowerCase()));
+                });
 
-    function deleteRow(id) { if(confirm('削除しますか？')) { document.getElementById(id)?.remove(); if(id === selectedGroupId) deselectAll(); } }
-    function resetScan() { document.getElementById('scan-popup').style.display = 'none'; isScanning = true; lastCodes = []; }
-    function updateStatus(t, c) { const s = document.getElementById('status'); s.innerText = t; s.style.color = c; }
+                const trM = document.createElement('tr');
+                trM.className = 'hover:bg-slate-50';
 
-    function downloadCSV() {
-        let csvContent = "\uFEFF商品名,商品JAN,割引JAN\n";
-        document.querySelectorAll('.product-group').forEach(group => {
-            const name = group.querySelector('input[id^="input-"]').value || "";
-            const jan = group.dataset.prodJan;
-            const dJan = group.querySelector('input[id^="discount-"]').value || "";
-            csvContent += `"${name}","${jan}","${dJan}"\n`;
-        });
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob); link.download = `scan_list.csv`; link.click();
-    }
-</script>
+                // 1. 左端：矢印（詳細にヒットしていれば最初から下向き）
+                const tdI = document.createElement('td');
+                tdI.className = 'col-arrow cursor-pointer';
+                const arrowTransform = detailMatch ? 'rotate(90deg)' : 'rotate(0deg)';
+                tdI.innerHTML = `<span id="ic-${rIdx}" style="transform: ${arrowTransform}" class="inline-block transition-transform duration-200 text-[9px]">▶</span>`;
+                tdI.onclick = () => toggleRow(rIdx);
+                trM.appendChild(tdI);
+
+                // 2. メインデータ列
+                mapping.main.forEach(c => {
+                    const td = document.createElement('td');
+                    td.className = c.cls + (c.label.includes("金額") ? " font-bold text-indigo-700" : "") + " cursor-pointer";
+                    td.innerHTML = highlight(row[c.i] || "", qs);
+                    td.onclick = () => toggleRow(rIdx);
+                    trM.appendChild(td);
+                });
+
+                // 3. 右端：チェックボックス 
+                const tdC = document.createElement('td');
+                tdC.className = 'col-check';
+                const priceMatch = (row[mapping.main.find(m => m.label.includes("金額"))?.i] || "").replace(/[^0-9]/g, '');
+                tdC.innerHTML = `<input type="checkbox" class="row-check" data-price="${priceMatch || 0}" onclick="calcTotal()">`;
+                trM.appendChild(tdC);
+
+                b.appendChild(trM);
+
+                // 詳細行（詳細にヒットしていれば最初から表示）
+                const trD = document.createElement('tr');
+                trD.id = `d-${rIdx}`;
+                trD.className = detailMatch ? '' : 'hidden-row';
+                const tdD = document.createElement('td');
+                tdD.colSpan = mapping.main.length + 2;
+                tdD.style.padding = "0";
+                
+                let html = `<div style="width:548px;" class="border-l-4 border-indigo-400 p-3 bg-slate-50 space-y-2">`;
+                mapping.detail.forEach(c => {
+                    html += `<div><div class="text-[9px] font-bold text-indigo-500">${c.label}</div>
+                             <div class="text-[12px] text-slate-700 whitespace-pre-wrap">${highlight(row[c.i] || "---", qs)}</div></div>`;
+                });
+                tdD.innerHTML = html + '</div>';
+                trD.appendChild(tdD);
+                b.appendChild(trD);
+            });
+            document.getElementById('tableContainer').classList.remove('hidden');
+            calcTotal();
+        }
+
+        function highlight(t, qs) {
+            if (!qs.length || !t) return t;
+            let h = t;
+            qs.forEach(q => {
+                const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, "gi");
+                h = h.replace(re, '<mark>$1</mark>');
+            });
+            return h;
+        }
+
+        function toggleRow(idx) {
+            const d = document.getElementById(`d-${idx}`);
+            const ic = document.getElementById(`ic-${idx}`);
+            if(!d) return;
+            d.classList.toggle('hidden-row');
+            ic.style.transform = d.classList.contains('hidden-row') ? 'rotate(0deg)' : 'rotate(90deg)';
+        }
+
+        function calcTotal() {
+            const checks = document.querySelectorAll('.row-check:checked');
+            let total = 0;
+            checks.forEach(c => total += parseInt(c.dataset.price));
+            document.getElementById('totalAmount').textContent = total.toLocaleString();
+        }
+
+        function toggleAllChecks(checked) {
+            document.querySelectorAll('.row-check').forEach(c => c.checked = checked);
+            calcTotal();
+        }
+
+        function toggleAllRows() {
+            isAllOpen = !isAllOpen;
+            document.querySelectorAll('tr[id^="d-"]').forEach(r => isAllOpen ? r.classList.remove('hidden-row') : r.classList.add('hidden-row'));
+            document.querySelectorAll('span[id^="ic-"]').forEach(i => i.style.transform = isAllOpen ? 'rotate(90deg)' : 'rotate(0deg)');
+        }
+        init();
+    </script>
 </body>
 </html>
