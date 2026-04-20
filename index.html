@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>作業管理 - 検索自動展開版</title>
+    <title>作業管理 - 検索条件最適化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .whitespace-pre-wrap { white-space: pre-wrap; word-break: break-all; }
@@ -17,18 +17,12 @@
             border-collapse: collapse;
         }
 
-        /* 1. 左端：矢印（25px） */
         .col-arrow { width: 15px !important; text-align: center; color: #94a3b8; }
-        /* 2. 作業コード（60px） */
         .col-work-code { width: 30px !important; text-align: center; font-family: monospace; }
-        /* 3. メニュー名（150px） */
         .col-menu { width: 180px !important; }
-        /* 4. 作業内容（メイン 280px） */
         .col-default { width: 280px !important; }
-        /* 5. 金額（75px） */
         .col-price { width: 40px !important; text-align: right; }
         th.col-price { text-align: center !important; }
-        /* 6. 右端：チェックボックス（30px） */
         .col-check { width: 30px !important; text-align: center; }
 
         th, td { 
@@ -37,7 +31,6 @@
         }
         th { background-color: #1e293b; color: white; }
 
-        /* 合計表示エリア  */
         #totalBar {
             position: sticky; top: 0; z-index: 50;
             background: #fff; border: 2px solid #6366f1;
@@ -53,12 +46,13 @@
             <div class="text-xl font-black text-indigo-600">¥ <span id="totalAmount">0</span></div>
         </div>
 
-        <div class="mb-3 flex items-center gap-2" style="width: 550px;">
-            <input type="text" id="searchInput" placeholder="検索..." 
+        <div class="mb-3 flex items-center gap-3" style="width: 550px;">
+            <input type="text" id="searchInput" placeholder="メニュー名で検索..." 
                 class="flex-grow p-2 border border-slate-300 rounded text-sm focus:outline-none">
-            <button onclick="toggleAllRows()" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-bold">
-                全展開
-            </button>
+            
+            <label class="flex items-center gap-1 text-slate-600 text-xs font-bold cursor-pointer whitespace-nowrap">
+                <input type="checkbox" id="searchAllColumns" onchange="runSearch()"> 詳細も検索
+            </label>
         </div>
 
         <div class="bg-white shadow-sm overflow-hidden hidden inline-block" id="tableContainer">
@@ -72,7 +66,7 @@
     <script>
         const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRguVx6K4z5w1QNwtfIwbY_f6Ikaqwawj7MmsWCWxNmJG7ugKAnvmrluW2Oxoz5FfiLvKSWRvJ23GXN/pub?output=csv';
         const detailColumnNames = ["作業内容", "補足事項", "関連メニュー"];
-        let allData = []; let mapping = { main: [], detail: [] }; let isAllOpen = false;
+        let allData = []; let mapping = { main: [], detail: [] };
 
         async function init() {
             try {
@@ -81,8 +75,12 @@
                 allData = parseCSV(text);
                 buildHeader(allData[0]);
                 render(allData.slice(1));
-                document.getElementById('searchInput').addEventListener('input', e => render(allData.slice(1), e.target.value));
+                document.getElementById('searchInput').addEventListener('input', runSearch);
             } catch (e) { console.error(e); }
+        }
+
+        function runSearch() {
+            render(allData.slice(1), document.getElementById('searchInput').value);
         }
 
         function parseCSV(s) {
@@ -127,17 +125,32 @@
 
         function render(rows, s = "") {
             const b = document.getElementById('tbody');
+            const isDetailSearch = document.getElementById('searchAllColumns').checked;
             b.innerHTML = "";
             const qs = s.trim().split(/\s+/).filter(q => q !== "");
             
             rows.forEach((row, rIdx) => {
                 if (row.join('').trim() === "") return;
                 
-                // 検索一致判定
-                const match = qs.length === 0 || qs.some(q => row.some(cell => cell.toLowerCase().includes(q.toLowerCase())));
+                // 検索判定
+                const match = qs.length === 0 || qs.some(q => {
+                    const searchWord = q.toLowerCase();
+                    // 金額以外のメイン項目を検索
+                    const inMain = mapping.main.some(c => {
+                        if (c.label.includes("金額")) return false; 
+                        return (row[c.i] || "").toLowerCase().includes(searchWord);
+                    });
+                    if (inMain) return true;
+                    
+                    // チェック時のみ詳細項目を検索
+                    if (isDetailSearch) {
+                        return mapping.detail.some(c => (row[c.i] || "").toLowerCase().includes(searchWord));
+                    }
+                    return false;
+                });
                 if (!match) return;
 
-                // 詳細エリアに検索ワードが含まれているか判定
+                // 詳細項目にヒットしているかの判定（アイコン背景色用）
                 const detailMatch = qs.length > 0 && mapping.detail.some(c => {
                     const cellValue = (row[c.i] || "").toLowerCase();
                     return qs.some(q => cellValue.includes(q.toLowerCase()));
@@ -146,24 +159,21 @@
                 const trM = document.createElement('tr');
                 trM.className = 'hover:bg-slate-50';
 
-                // 1. 左端：矢印（詳細にヒットしていれば最初から下向き）
                 const tdI = document.createElement('td');
-                tdI.className = 'col-arrow cursor-pointer';
-                const arrowTransform = detailMatch ? 'rotate(90deg)' : 'rotate(0deg)';
-                tdI.innerHTML = `<span id="ic-${rIdx}" style="transform: ${arrowTransform}" class="inline-block transition-transform duration-200 text-[9px]">▶</span>`;
+                tdI.className = `col-arrow cursor-pointer ${detailMatch ? 'bg-amber-100' : ''}`;
+                tdI.innerHTML = `<span id="ic-${rIdx}" style="transform: rotate(0deg)" class="inline-block transition-transform duration-200 text-[9px]">▶</span>`;
                 tdI.onclick = () => toggleRow(rIdx);
                 trM.appendChild(tdI);
 
-                // 2. メインデータ列
                 mapping.main.forEach(c => {
                     const td = document.createElement('td');
                     td.className = c.cls + (c.label.includes("金額") ? " font-bold text-indigo-700" : "") + " cursor-pointer";
-                    td.innerHTML = highlight(row[c.i] || "", qs);
+                    // 金額列はハイライトしない
+                    td.innerHTML = c.label.includes("金額") ? (row[c.i] || "") : highlight(row[c.i] || "", qs);
                     td.onclick = () => toggleRow(rIdx);
                     trM.appendChild(td);
                 });
 
-                // 3. 右端：チェックボックス 
                 const tdC = document.createElement('td');
                 tdC.className = 'col-check';
                 const priceMatch = (row[mapping.main.find(m => m.label.includes("金額"))?.i] || "").replace(/[^0-9]/g, '');
@@ -172,10 +182,9 @@
 
                 b.appendChild(trM);
 
-                // 詳細行（詳細にヒットしていれば最初から表示）
                 const trD = document.createElement('tr');
                 trD.id = `d-${rIdx}`;
-                trD.className = detailMatch ? '' : 'hidden-row';
+                trD.className = 'hidden-row';
                 const tdD = document.createElement('td');
                 tdD.colSpan = mapping.main.length + 2;
                 tdD.style.padding = "0";
@@ -223,11 +232,6 @@
             calcTotal();
         }
 
-        function toggleAllRows() {
-            isAllOpen = !isAllOpen;
-            document.querySelectorAll('tr[id^="d-"]').forEach(r => isAllOpen ? r.classList.remove('hidden-row') : r.classList.add('hidden-row'));
-            document.querySelectorAll('span[id^="ic-"]').forEach(i => i.style.transform = isAllOpen ? 'rotate(90deg)' : 'rotate(0deg)');
-        }
         init();
     </script>
 </body>
